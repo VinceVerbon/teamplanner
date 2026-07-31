@@ -12,6 +12,10 @@ All notable changes to teamplanner are documented here (Keep a Changelog; SemVer
 - F4 (in progress): Drizzle schema for club (tenant root), teams, club admins, staff assignments (pending/active per F8), single-team player registrations, parent links (pending/active per F5); role helper `getUserRoles` + guards; test-set covers no-roles, admin, player+multi-team staff on one identity, parent links, unique constraints, and pending-until-verified staff.
 - Database layer: PGlite embedded (dev/tests) or PostgreSQL via `DATABASE_URL` (prod), Drizzle migrations applied at server startup.
 - Pages: landing, register, login (with conditional Google button for F2), forgot/reset password, account (Dutch UI).
+- F6 (in progress): club bootstrap - the first authenticated user creates the single club (v1) and becomes its admin; club rename by admin; `/api/clubs` + `/api/clubs/current`; test-set covers bootstrap, admin grant, rename, second-club rejection, non-admin rejection, slug validation.
+- F7 (in progress): team management - admin-only create/rename/archive with archived teams excluded from the default list; `/api/teams`; test-set covers CRUD, non-admin 403s, name validation, 404s.
+- F8 (in progress): member administration - admin assigns registered players by email (one team per player, DB-enforced), staff added by admin become active immediately while staff added by active team staff are pending until admin verification, admin verify/reject/remove, member lists visible to team members and managers, email lookup for admin/staff; `/api/teams/:id/members|players|staff`, `/api/staff/:id[/verify]`, `/api/users/lookup`; test-set covers all main flows plus 12 permission/constraint edge cases.
+- Admin UI (Dutch): `/admin` with club bootstrap form, club settings, team list/create/archive; `/admin/teams/:id` with player and staff management incl. pending-approval flow; "Beheer" header link for admins/staff.
 - `docs/FEATURES.md` - feature backlog F1-F19 logged ahead of build (identity and access, club and teams, trainings and schedule, attendance, communication, platform) plus architecture principles and stack decisions.
 
 ### Changed

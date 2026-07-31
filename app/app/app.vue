@@ -10,9 +10,19 @@ useSeoMeta({
 })
 
 const session = authClient.useSession()
+const me = useMe()
+
+watch(() => session.value.data?.user?.id, (id) => {
+  if (id) refreshMe()
+  else me.value = null
+}, { immediate: true })
+
+const canManage = computed(() =>
+  !!me.value && (me.value.roles.adminOfClubIds.length > 0 || me.value.roles.staffTeamIds.length > 0))
 
 async function logout() {
   await authClient.signOut()
+  me.value = null
   await navigateTo('/login')
 }
 </script>
@@ -32,6 +42,14 @@ async function logout() {
       <template #right>
         <UColorModeButton />
         <template v-if="session.data?.user">
+          <UButton
+            v-if="canManage"
+            to="/admin"
+            icon="i-lucide-settings"
+            variant="ghost"
+            color="neutral"
+            label="Beheer"
+          />
           <UButton
             to="/account"
             icon="i-lucide-user"
