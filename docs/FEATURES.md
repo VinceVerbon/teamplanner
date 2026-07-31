@@ -31,7 +31,7 @@ First tenant: **FC Aalsmeer**, starting with one team: **MO17-4**. One club with
 
 | Layer | Choice | Rationale |
 |-------|--------|-----------|
-| App | Nuxt 3 + Nitro + TypeScript, Nuxt UI, Pinia, VueUse, Zod | interactive-app Flavour B house stack (`<MyAI>/docs/interactive-app-scaffold.md` section 1B) |
+| App | Nuxt 4 + Nitro + TypeScript, Nuxt UI v4, Pinia, VueUse, Zod | interactive-app Flavour B house stack (`<MyAI>/docs/interactive-app-scaffold.md` section 1B; doc says Nuxt 3 - current stable at init was Nuxt 4.5) |
 | Auth | **better-auth** (MIT, FOSS) | In-app auth: email/password + verification + reset AND social OAuth in one library; organization plugin maps to club/teams and covers the multi-tenant future. WhereLog's Pocket-ID + oauth2-proxy pattern was considered and rejected: edge SSO with admin-managed users, no public self-registration or social signup. |
 | Social providers | Google first; provider list config-driven | Extensible to Apple/Facebook/Microsoft without schema changes |
 | Database | **PostgreSQL + Drizzle ORM** (FOSS) | Relational fits teams/attendance/absence records; better-auth has a Drizzle adapter; Postgres scales to multi-tenant |
@@ -45,10 +45,10 @@ First tenant: **FC Aalsmeer**, starting with one team: **MO17-4**. One club with
 
 | ID | P | Status | Feature |
 |----|---|--------|---------|
-| F1 | P1 | planned | **Email/password registration** with email verification and password reset (better-auth). |
+| F1 | P1 | in-progress | **Email/password registration** with email verification and password reset (better-auth). |
 | F2 | P1 | planned | **Social login**: sign up / log in with Google or email. Provider list config-driven; more providers = config not code. |
-| F3 | P1 | planned | **Sessions, logout, account settings** - profile basics (name, email, avatar, **date of birth** - required for players, drives the F5 age rules), session management. |
-| F4 | P1 | planned | **Roles & permissions**: Admin / Staff (trainer-coach) / Player / Parent, enforced server-side per route. One identity can be player in exactly one team AND staff on one or more teams (including their own player team), and/or parent of one or more players. |
+| F3 | P1 | in-progress | **Sessions, logout, account settings** - profile basics (name, email, avatar, **date of birth** - required for players, drives the F5 age rules), session management. |
+| F4 | P1 | in-progress | **Roles & permissions**: Admin / Staff (trainer-coach) / Player / Parent, enforced server-side per route. One identity can be player in exactly one team AND staff on one or more teams (including their own player team), and/or parent of one or more players. |
 | F5 | P1 | planned | **Parent-player linking with age-based attendance management.** Linking works in BOTH directions: a player enters their parent's email, or a parent enters their player's email; the other party receives a verification email and must acknowledge before the link is active. Age rules for attendance self-management: **15+** enabled; **under 15** disabled by default but can be enabled per account (checkmark). **Parents can always manage attendance until the player turns 18.** At 18+ the parent link stays active but parent management defaults off; the player gets the setting **"mijn ouder mag mijn aanwezigheid beheren"** to re-enable it. |
 
 ### Club & teams
