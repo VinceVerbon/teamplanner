@@ -1,0 +1,28 @@
+# MyAI spine - local dev files, never tracked
+CLAUDE.md
+AGENTS.md
+GEMINI.md
+.claude/
+crosslog.md
+sessions/
+
+# secrets / env
+.env
+.env.*
+!.env.example
+
+# OS / editor / office cruft
+Thumbs.db
+.DS_Store
+~$*.*
+*.tmp
+.vscode/
+.idea/
+
+# interactive-app build artifacts (extend per archetype)
+node_modules/
+dist/
+build/
+__pycache__/
+.venv/
+venv/
