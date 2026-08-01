@@ -34,12 +34,19 @@ export async function lookupUserByEmail(requesterId: string, clubId: string, ema
 export async function listTeamMembers(requesterId: string, teamId: string) {
   const team = await getTeamOr404(teamId)
   const roles = await getUserRoles(requesterId)
-  // Team members see their team; managers see it too.
-  const isMember = roles.playerTeamId === teamId
-  if (!isMember && !canManageTeam(roles, team.clubId, teamId)) {
-    throw createError({ statusCode: 403, statusMessage: 'Not a member or manager of this team' })
-  }
   const db = getDb()
+  // Team members see their team; managers see it too; parents of a team player as
+  // well (F15: the roster incl. attendance is transparent to everyone concerned).
+  let allowed = roles.playerTeamId === teamId || canManageTeam(roles, team.clubId, teamId)
+  if (!allowed && roles.parentOfUserIds.length > 0) {
+    const kids = await db.select({ id: playerRegistrations.userId }).from(playerRegistrations)
+      .where(eq(playerRegistrations.teamId, teamId))
+    const kidIds = new Set(kids.map(k => k.id))
+    allowed = roles.parentOfUserIds.some(id => kidIds.has(id))
+  }
+  if (!allowed) {
+    throw createError({ statusCode: 403, statusMessage: 'Not a member, parent, or manager of this team' })
+  }
   const players = await db.select({
     userId: user.id, name: user.name, email: user.email, dateOfBirth: user.dateOfBirth
   }).from(playerRegistrations)

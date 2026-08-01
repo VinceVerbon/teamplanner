@@ -175,6 +175,25 @@ export const noTrainingPeriods = pgTable('no_training_periods', {
   createdAt: timestamp('created_at').notNull().defaultNow()
 })
 
+// F13: absences on the opt-out model. Attendance is expected; an absence row is the
+// active notification. classification is computed AT REPORT TIME against session start:
+// >= 1.5h before = timely, between 1.5h and start = late, at/after start (incl. staff
+// corrections afterwards) = no-show. source 'staff' = staff-recorded actual (F13
+// "correct/confirm actuals"). Transparent to the whole team by design (F15).
+export const absences = pgTable('absences', {
+  id: id(),
+  clubId: text('club_id').notNull().references(() => clubs.id, { onDelete: 'cascade' }),
+  teamId: text('team_id').notNull().references(() => teams.id, { onDelete: 'cascade' }),
+  sessionId: text('session_id').notNull().references(() => trainingSessions.id, { onDelete: 'cascade' }),
+  playerUserId: text('player_user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  reportedByUserId: text('reported_by_user_id').references(() => user.id, { onDelete: 'set null' }),
+  classification: text('classification', { enum: ['timely', 'late', 'no-show'] }).notNull(),
+  source: text('source', { enum: ['reported', 'staff'] }).notNull().default('reported'),
+  reason: text('reason'),
+  reportedAt: timestamp('reported_at').notNull().defaultNow(),
+  createdAt: timestamp('created_at').notNull().defaultNow()
+}, t => [uniqueIndex('absences_session_player_uq').on(t.sessionId, t.playerUserId)])
+
 // Link becomes 'active' only after the other party confirms by email (F5).
 // Works in both directions: requestedBy records which side initiated; the OTHER side
 // receives the token by mail and must confirm.

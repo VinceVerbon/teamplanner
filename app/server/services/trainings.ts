@@ -308,13 +308,27 @@ export async function getMySchedule(userId: string, opts: { from?: string } = {}
   }
   if (roles.playerTeamId) addRole(roles.playerTeamId, 'player')
   for (const teamId of roles.staffTeamIds) addRole(teamId, 'staff')
+  const kidRegs: { teamId: string, userId: string }[] = []
   if (roles.parentOfUserIds.length > 0) {
-    const kidRegs = await db.select({ teamId: playerRegistrations.teamId, userId: playerRegistrations.userId })
+    kidRegs.push(...await db.select({ teamId: playerRegistrations.teamId, userId: playerRegistrations.userId })
       .from(playerRegistrations)
-      .where(inArray(playerRegistrations.userId, roles.parentOfUserIds))
+      .where(inArray(playerRegistrations.userId, roles.parentOfUserIds)))
     for (const reg of kidRegs) addRole(reg.teamId, 'parent')
   }
   if (teamRoles.size === 0) return []
+  // Who may this user report absences for, per team (F13 via the F5 age rules)?
+  const { canManageAttendanceFor } = await import('./parents')
+  const manageableByTeam = new Map<string, { userId: string, name: string }[]>()
+  const candidates: { teamId: string, userId: string }[] = []
+  if (roles.playerTeamId) candidates.push({ teamId: roles.playerTeamId, userId })
+  candidates.push(...kidRegs)
+  for (const c of candidates) {
+    if (await canManageAttendanceFor(userId, c.userId)) {
+      const [u] = await db.select({ name: user.name }).from(user).where(eq(user.id, c.userId))
+      if (!manageableByTeam.has(c.teamId)) manageableByTeam.set(c.teamId, [])
+      manageableByTeam.get(c.teamId)!.push({ userId: c.userId, name: u!.name })
+    }
+  }
   const teamIds = [...teamRoles.keys()]
   const teamRows = await db.select().from(teams).where(inArray(teams.id, teamIds))
   const trainer = alias(user, 'trainer')
@@ -338,10 +352,17 @@ export async function getMySchedule(userId: string, opts: { from?: string } = {}
     .leftJoin(trainer, eq(trainingSessions.trainerUserId, trainer.id))
     .where(and(inArray(trainingSessions.teamId, teamIds), gte(trainingSessions.date, from)))
     .orderBy(asc(trainingSessions.date), asc(trainingSessions.startTime))
-  const withLocation = sessions.map(s => ({ ...s, locationName: s.registerLocation ?? s.locationText }))
+  const { absencesForSessions } = await import('./attendance')
+  const absenceMap = await absencesForSessions(sessions.map(s => s.id))
+  const withLocation = sessions.map(s => ({
+    ...s,
+    locationName: s.registerLocation ?? s.locationText,
+    absences: absenceMap.get(s.id) ?? []
+  }))
   return teamRows.map(team => ({
     team: { id: team.id, name: team.name },
     myRoles: [...teamRoles.get(team.id)!].sort(),
+    manageablePlayers: manageableByTeam.get(team.id) ?? [],
     sessions: withLocation.filter(s => s.teamId === team.id)
   }))
 }
@@ -373,5 +394,11 @@ export async function listTeamSessions(requesterId: string, teamId: string, opts
     .leftJoin(trainer, eq(trainingSessions.trainerUserId, trainer.id))
     .where(and(eq(trainingSessions.teamId, teamId), gte(trainingSessions.date, from)))
     .orderBy(asc(trainingSessions.date), asc(trainingSessions.startTime))
-  return rows.map(r => ({ ...r, locationName: r.registerLocation ?? r.locationText }))
+  const { absencesForSessions } = await import('./attendance')
+  const absenceMap = await absencesForSessions(rows.map(r => r.id))
+  return rows.map(r => ({
+    ...r,
+    locationName: r.registerLocation ?? r.locationText,
+    absences: absenceMap.get(r.id) ?? []
+  }))
 }

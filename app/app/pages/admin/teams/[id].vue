@@ -190,6 +190,32 @@ const removePeriod = (id: string) => run(async () => {
 function fmtDate(d: string): string {
   return new Date(`${d}T00:00:00`).toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
 }
+
+// --- F13 staff corrections + F15 stats ---
+const { data: stats, refresh: refreshStats } = await useFetch(`/api/teams/${teamId}/attendance-stats`)
+const CLASS_LABELS: Record<string, string> = {
+  'timely': 'tijdig',
+  'late': 'te laat',
+  'no-show': 'niet gemeld'
+}
+const noShowFor = ref<string | null>(null)
+const noShowPlayer = ref('')
+const playerItems = computed(() =>
+  (data.value?.players || []).map(p => ({ label: p.name, value: p.userId })))
+
+const recordNoShow = (sessionId: string) => run(async () => {
+  await $fetch(`/api/sessions/${sessionId}/no-shows`, {
+    method: 'POST',
+    body: { playerUserId: noShowPlayer.value }
+  })
+  noShowFor.value = null
+  await Promise.all([refreshSessions(), refreshStats()])
+}, 'No-show genoteerd')
+
+const removeAbsence = (absenceId: string) => run(async () => {
+  await $fetch(`/api/absences/${absenceId}`, { method: 'DELETE' })
+  await Promise.all([refreshSessions(), refreshStats()])
+}, 'Afwezigheid verwijderd')
 </script>
 
 <template>
@@ -651,12 +677,104 @@ function fmtDate(d: string): string {
                   @click="cancelSession(s.id)"
                 />
               </div>
+              <p
+                v-if="s.absences.length"
+                class="text-sm text-muted"
+              >
+                Afgemeld:
+                <template
+                  v-for="(a, i) in s.absences"
+                  :key="a.id"
+                >
+                  <template v-if="i > 0">
+                    ,
+                  </template>{{ a.playerName }} ({{ CLASS_LABELS[a.classification] }}<template v-if="a.reason">
+                    - {{ a.reason }}
+                  </template>)<UButton
+                    v-if="canManage"
+                    icon="i-lucide-x"
+                    size="xs"
+                    variant="link"
+                    color="error"
+                    aria-label="Afwezigheid verwijderen"
+                    @click="removeAbsence(a.id)"
+                  />
+                </template>
+              </p>
+              <div
+                v-if="canManage && s.type === 'training' && s.status === 'scheduled'"
+                class="space-y-1"
+              >
+                <UButton
+                  label="No-show noteren"
+                  size="xs"
+                  variant="ghost"
+                  color="neutral"
+                  @click="noShowFor = noShowFor === s.id ? null : s.id; noShowPlayer = ''"
+                />
+                <div
+                  v-if="noShowFor === s.id"
+                  class="flex gap-2"
+                >
+                  <USelect
+                    v-model="noShowPlayer"
+                    :items="playerItems"
+                    placeholder="speler"
+                    class="min-w-40"
+                  />
+                  <UButton
+                    label="Noteer no-show"
+                    size="xs"
+                    :disabled="!noShowPlayer"
+                    :loading="busy"
+                    @click="recordNoShow(s.id)"
+                  />
+                </div>
+              </div>
             </li>
             <li
               v-if="!sessions?.length"
               class="py-2 text-muted text-sm"
             >
               Geen komende trainingen.
+            </li>
+          </ul>
+        </div>
+      </UCard>
+
+      <UCard>
+        <template #header>
+          <h2 class="font-semibold">
+            Aanwezigheid (trainingen)
+          </h2>
+        </template>
+        <div class="space-y-2">
+          <p class="text-sm text-muted">
+            Zichtbaar voor iedereen bij het team: spelers, staf en ouders. Gebaseerd op {{ stats?.totalTrainings ?? 0 }} gespeelde training(en).
+          </p>
+          <ul class="divide-y divide-default">
+            <li
+              v-for="p in stats?.players || []"
+              :key="p.userId"
+              class="flex items-center justify-between py-2"
+            >
+              <span>{{ p.name }}</span>
+              <span class="flex items-center gap-3 text-sm">
+                <span class="text-muted">
+                  {{ p.counts.timely }} tijdig / {{ p.counts.late }} te laat / {{ p.counts.noShow }} niet gemeld
+                </span>
+                <UBadge
+                  :color="p.percentage === null ? 'neutral' : p.percentage >= 80 ? 'success' : p.percentage >= 60 ? 'warning' : 'error'"
+                  variant="subtle"
+                  :label="p.percentage === null ? '-' : `${p.percentage}%`"
+                />
+              </span>
+            </li>
+            <li
+              v-if="!stats?.players.length"
+              class="py-2 text-muted text-sm"
+            >
+              Nog geen spelers of trainingen.
             </li>
           </ul>
         </div>

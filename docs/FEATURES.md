@@ -74,9 +74,9 @@ First tenant: **FC Aalsmeer**, starting with one team: **MO17-4**. One club with
 
 | ID | P | Status | Feature |
 |----|---|--------|---------|
-| F13 | P1 | planned | **Absence notification & attendance tracking (opt-out model)**: attendance is expected; players (or parents, per F5 rules) actively report absence. Reported **>= 1.5 h before start** = timely absence; **between 1.5 h and start** = late absence; **not reported before start** = no-show/overdue notification. All of it transparently visible to all players, staff, and parents in the team. Staff can correct/confirm actuals after the session. |
+| F13 | P1 | in-progress | **Absence notification & attendance tracking (opt-out model)**: attendance is expected; players (or parents, per F5 rules) actively report absence. Reported **>= 1.5 h before start** = timely absence; **between 1.5 h and start** = late absence; **not reported before start** = no-show/overdue notification. All of it transparently visible to all players, staff, and parents in the team. Staff can correct/confirm actuals after the session. |
 | F14 | - | dropped | ~~RSVP coming/not coming/maybe~~ - superseded by the F13 opt-out model: attendance is expected, absence requires actively notifying. |
-| F15 | P1 | planned | **Attendance transparency & stats**: every player's training attendance percentage visible to **everyone concerned with the team** - all players, staff, and parents of all players - on the roster view. Deliberate design: transparency drives attendance and makes playing-time decisions unsurprising. History, trends and export follow in P2. |
+| F15 | P1 | in-progress | **Attendance transparency & stats**: every player's training attendance percentage visible to **everyone concerned with the team** - all players, staff, and parents of all players - on the roster view. Deliberate design: transparency drives attendance and makes playing-time decisions unsurprising. History, trends and export follow in P2. |
 
 ### Communication
 
