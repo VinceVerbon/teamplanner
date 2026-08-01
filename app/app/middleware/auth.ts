@@ -1,7 +1,8 @@
-export default defineNuxtRouteMiddleware(async () => {
+export default defineNuxtRouteMiddleware(async (to) => {
   if (import.meta.server) return
   const { data } = await authClient.getSession()
   if (!data?.user) {
-    return navigateTo('/login')
+    // Preserve the intended destination (e.g. a parent-link confirm URL from a mail).
+    return navigateTo({ path: '/login', query: { redirect: to.fullPath } })
   }
 })

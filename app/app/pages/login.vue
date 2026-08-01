@@ -12,6 +12,13 @@ const state = reactive<Partial<Schema>>({})
 const pending = ref(false)
 const errorMsg = ref('')
 const googleEnabled = useRuntimeConfig().public.googleEnabled
+const route = useRoute()
+
+// Only follow internal redirect targets (no protocol-relative or absolute URLs).
+function redirectTarget(): string {
+  const r = route.query.redirect
+  return typeof r === 'string' && r.startsWith('/') && !r.startsWith('//') ? r : '/account'
+}
 
 async function onSubmit(event: FormSubmitEvent<Schema>) {
   pending.value = true
@@ -27,11 +34,11 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
       : 'Inloggen is niet gelukt. Controleer je gegevens.'
     return
   }
-  await navigateTo('/account')
+  await navigateTo(redirectTarget())
 }
 
 async function googleLogin() {
-  await authClient.signIn.social({ provider: 'google', callbackURL: '/account' })
+  await authClient.signIn.social({ provider: 'google', callbackURL: redirectTarget() })
 }
 </script>
 

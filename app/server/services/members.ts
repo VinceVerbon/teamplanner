@@ -17,7 +17,7 @@ function canManageTeam(roles: UserRoles, clubId: string, teamId: string): boolea
 
 async function findUserByEmail(email: string) {
   const db = getDb()
-  const [found] = await db.select({ id: user.id, name: user.name, email: user.email })
+  const [found] = await db.select({ id: user.id, name: user.name, email: user.email, dateOfBirth: user.dateOfBirth })
     .from(user).where(eq(user.email, email.trim().toLowerCase()))
   return found ?? null
 }
@@ -65,6 +65,10 @@ export async function assignPlayer(requesterId: string, teamId: string, email: s
   }
   const target = await findUserByEmail(email)
   if (!target) throw createError({ statusCode: 404, statusMessage: 'No registered account with this email' })
+  // DOB is required for players: it drives the F5 age rules.
+  if (!target.dateOfBirth) {
+    throw createError({ statusCode: 400, statusMessage: 'This account has no date of birth; players must set one first (account settings)' })
+  }
   const db = getDb()
   const existing = await db.select().from(playerRegistrations).where(eq(playerRegistrations.userId, target.id))
   if (existing.length > 0) {

@@ -61,7 +61,7 @@ describe('F4 roles - main flows', () => {
     const parent = await makeUser('parent@example.com')
     const child = await makeUser('child@example.com')
     const other = await makeUser('otherchild@example.com')
-    await getDb().insert(parentLinks).values({ clubId, parentUserId: parent, playerUserId: child, status: 'active' })
+    await getDb().insert(parentLinks).values({ clubId, parentUserId: parent, playerUserId: child, requestedBy: 'player', status: 'active' })
     const roles = await getUserRoles(parent)
     expect(isParentOf(roles, child)).toBe(true)
     expect(isParentOf(roles, other)).toBe(false)
@@ -104,7 +104,7 @@ describe('F4/F8 roles - edge cases', () => {
   it('pending parent link grants nothing (F5 verification pending)', async () => {
     const parent = await makeUser('pendingparent@example.com')
     const child = await makeUser('pendingchild@example.com')
-    await getDb().insert(parentLinks).values({ clubId, parentUserId: parent, playerUserId: child, status: 'pending' })
+    await getDb().insert(parentLinks).values({ clubId, parentUserId: parent, playerUserId: child, requestedBy: 'player', status: 'pending' })
     const roles = await getUserRoles(parent)
     expect(isParentOf(roles, child)).toBe(false)
   })

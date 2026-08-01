@@ -12,6 +12,10 @@ export const user = pgTable('user', {
   image: text('image'),
   // Drives the F5 age rules; required for players (enforced at player registration, not at signup)
   dateOfBirth: date('date_of_birth'),
+  // F5 under-15 checkmark: allows a young player to manage their own attendance (set by parent/admin).
+  selfManageOptIn: boolean('self_manage_opt_in').notNull().default(false),
+  // F5 18+ setting "mijn ouder mag mijn aanwezigheid beheren" (owned by the player).
+  parentManageOptIn: boolean('parent_manage_opt_in').notNull().default(false),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow()
 })
@@ -97,11 +101,15 @@ export const playerRegistrations = pgTable('player_registrations', {
 })
 
 // Link becomes 'active' only after the other party confirms by email (F5).
+// Works in both directions: requestedBy records which side initiated; the OTHER side
+// receives the token by mail and must confirm.
 export const parentLinks = pgTable('parent_links', {
   id: id(),
   clubId: text('club_id').notNull().references(() => clubs.id, { onDelete: 'cascade' }),
   parentUserId: text('parent_user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
   playerUserId: text('player_user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  requestedBy: text('requested_by', { enum: ['parent', 'player'] }).notNull(),
+  token: text('token').notNull().unique().$defaultFn(() => crypto.randomUUID()),
   status: text('status', { enum: ['pending', 'active'] }).notNull().default('pending'),
   createdAt: timestamp('created_at').notNull().defaultNow()
 }, t => [uniqueIndex('parent_links_parent_player_uq').on(t.parentUserId, t.playerUserId)])

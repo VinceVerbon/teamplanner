@@ -19,7 +19,9 @@ let teamA: string
 let teamB: string
 
 async function makeUser(email: string): Promise<string> {
-  const [u] = await getDb().insert(user).values({ name: email.split('@')[0]!, email }).returning()
+  // DOB present by default: players cannot be registered without one (F5).
+  const [u] = await getDb().insert(user)
+    .values({ name: email.split('@')[0]!, email, dateOfBirth: '2009-03-01' }).returning()
   return u!.id
 }
 
