@@ -4,7 +4,8 @@ AGENTS.md
 GEMINI.md
 .claude/
 crosslog.md
-sessions/
+# root-anchored: only the repo-root session-notes dir, NOT e.g. app/server/api/sessions/
+/sessions/
 
 # secrets / env
 .env
