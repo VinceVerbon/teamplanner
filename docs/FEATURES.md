@@ -59,7 +59,7 @@ First tenant: **FC Aalsmeer**, starting with one team: **MO17-4**. One club with
 | F7 | P1 | in-progress | **Team management**: create/edit/archive teams within the club. First team: MO17-4. |
 | F8 | P1 | in-progress | **Member administration**: player belongs to exactly one team; staff assignable to multiple teams (incl. their own player team). Existing team staff can add new staff members; those assignments are **verified by admin**, or an admin sets the staff role on the team directly once the identity is registered. Admin always retains manage/enforce. |
 | F9 | P2 | planned | **Email invitations**: invite someone by email to register and land in the right team/role; includes team staff inviting/setting other team staff per the F8 verification flow. |
-| F20 | P1 | planned | **Club branding & theming**: upload club logo; theme colors derived from the logo as default; configurable via theme management. |
+| F20 | P1 | in-progress | **Club branding & theming**: upload club logo; theme colors derived from the logo as default; configurable via theme management. |
 
 ### Trainings & schedule
 

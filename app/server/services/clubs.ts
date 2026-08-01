@@ -26,11 +26,66 @@ export async function createClub(userId: string, input: { slug: string, name: st
   return club!
 }
 
-/** The single club of this deployment, or null before bootstrap. */
+/** The single club of this deployment, or null before bootstrap. Logo bytes stay out. */
 export async function getCurrentClub() {
   const db = getDb()
   const rows = await db.select().from(clubs).limit(1)
-  return rows[0] ?? null
+  const row = rows[0]
+  if (!row) return null
+  const { logoData, logoMime, ...safe } = row
+  return { ...safe, hasLogo: !!(logoData && logoMime) }
+}
+
+const HEX_RE = /^#[0-9a-f]{6}$/i
+const LOGO_MIMES = ['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp']
+const LOGO_MAX_BYTES = 1_000_000
+
+/** F20: store the club logo (admin only). data is the raw upload; capped and mime-checked. */
+export async function setClubLogo(userId: string, clubId: string, upload: { data: Buffer, mime: string }) {
+  const roles = await getUserRoles(userId)
+  if (!isClubAdmin(roles, clubId)) {
+    throw createError({ statusCode: 403, statusMessage: 'Admin role required' })
+  }
+  if (!LOGO_MIMES.includes(upload.mime)) {
+    throw createError({ statusCode: 400, statusMessage: 'Logo must be PNG, JPEG, SVG or WebP' })
+  }
+  if (upload.data.length > LOGO_MAX_BYTES) {
+    throw createError({ statusCode: 400, statusMessage: 'Logo is too large (max 1 MB)' })
+  }
+  const db = getDb()
+  const [club] = await db.update(clubs)
+    .set({ logoData: upload.data.toString('base64'), logoMime: upload.mime })
+    .where(eq(clubs.id, clubId))
+    .returning()
+  if (!club) throw createError({ statusCode: 404, statusMessage: 'Club not found' })
+  return { stored: true, bytes: upload.data.length }
+}
+
+/** F20: the logo binary for serving, or null. */
+export async function getClubLogo(clubId: string) {
+  const db = getDb()
+  const [club] = await db.select({ logoData: clubs.logoData, logoMime: clubs.logoMime })
+    .from(clubs).where(eq(clubs.id, clubId))
+  if (!club?.logoData || !club.logoMime) return null
+  return { data: Buffer.from(club.logoData, 'base64'), mime: club.logoMime }
+}
+
+/** F20: set the theme primary color (admin only; hex like #1a7f37). */
+export async function setClubBranding(userId: string, clubId: string, patch: { primaryColor?: string | null }) {
+  const roles = await getUserRoles(userId)
+  if (!isClubAdmin(roles, clubId)) {
+    throw createError({ statusCode: 403, statusMessage: 'Admin role required' })
+  }
+  if (patch.primaryColor != null && !HEX_RE.test(patch.primaryColor)) {
+    throw createError({ statusCode: 400, statusMessage: 'primaryColor must be a #rrggbb hex color' })
+  }
+  const db = getDb()
+  const [club] = await db.update(clubs)
+    .set({ primaryColor: patch.primaryColor ?? null })
+    .where(eq(clubs.id, clubId))
+    .returning()
+  if (!club) throw createError({ statusCode: 404, statusMessage: 'Club not found' })
+  return { primaryColor: club.primaryColor }
 }
 
 export async function updateClub(userId: string, clubId: string, patch: { name?: string }) {

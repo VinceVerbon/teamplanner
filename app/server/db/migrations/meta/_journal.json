@@ -36,6 +36,13 @@
       "when": 1785618322970,
       "tag": "0004_cool_mauler",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1785618878921,
+      "tag": "0005_serious_malice",
+      "breakpoints": true
     }
   ]
 }

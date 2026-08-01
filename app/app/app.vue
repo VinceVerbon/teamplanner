@@ -12,6 +12,15 @@ useSeoMeta({
 const session = authClient.useSession()
 const me = useMe()
 
+// F20 branding: club logo in the header, primary color as app-wide theme default.
+const { data: clubData } = await useFetch('/api/clubs/current')
+const club = computed(() => clubData.value?.club ?? null)
+useHead(() => ({
+  style: club.value?.primaryColor
+    ? [{ innerHTML: `:root { --ui-primary: ${club.value.primaryColor}; }` }]
+    : []
+}))
+
 watch(() => session.value.data?.user?.id, (id) => {
   if (id) refreshMe()
   else me.value = null
@@ -33,9 +42,15 @@ async function logout() {
       <template #left>
         <NuxtLink
           to="/"
-          class="font-bold text-lg"
+          class="font-bold text-lg flex items-center gap-2"
         >
-          teamplanner
+          <img
+            v-if="club?.hasLogo"
+            :src="`/api/clubs/${club.id}/logo`"
+            :alt="club.name"
+            class="h-7 w-7 object-contain"
+          >
+          {{ club?.name || 'teamplanner' }}
         </NuxtLink>
       </template>
 

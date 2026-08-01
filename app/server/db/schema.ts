@@ -62,6 +62,11 @@ export const clubs = pgTable('clubs', {
   id: id(),
   slug: text('slug').notNull().unique(),
   name: text('name').notNull(),
+  // F20 branding: logo stored inline (base64, capped at upload), theme primary color
+  // derived from the logo client-side as default and configurable by the admin.
+  logoData: text('logo_data'),
+  logoMime: text('logo_mime'),
+  primaryColor: text('primary_color'),
   createdAt: timestamp('created_at').notNull().defaultNow()
 })
 
