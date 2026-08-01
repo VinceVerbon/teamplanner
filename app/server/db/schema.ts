@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, date, uniqueIndex } from 'drizzle-orm/pg-core'
+import { pgTable, text, timestamp, boolean, date, integer, uniqueIndex } from 'drizzle-orm/pg-core'
 
 const id = () => text('id').primaryKey().$defaultFn(() => crypto.randomUUID())
 
@@ -97,6 +97,72 @@ export const playerRegistrations = pgTable('player_registrations', {
   clubId: text('club_id').notNull().references(() => clubs.id, { onDelete: 'cascade' }),
   teamId: text('team_id').notNull().references(() => teams.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull().unique().references(() => user.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').notNull().defaultNow()
+})
+
+// --- F10 trainings ---
+
+// Season bounds: training series (slots) generate sessions within a season.
+export const seasons = pgTable('seasons', {
+  id: id(),
+  clubId: text('club_id').notNull().references(() => clubs.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  startDate: date('start_date').notNull(),
+  endDate: date('end_date').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow()
+})
+
+// Reusable club-wide locations register.
+export const locations = pgTable('locations', {
+  id: id(),
+  clubId: text('club_id').notNull().references(() => clubs.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  address: text('address'),
+  createdAt: timestamp('created_at').notNull().defaultNow()
+})
+
+// Weekly default schedule: a fixed slot generates sessions for the season.
+// weekday is ISO: 1 = Monday .. 7 = Sunday. Times are 'HH:MM'.
+export const trainingSlots = pgTable('training_slots', {
+  id: id(),
+  clubId: text('club_id').notNull().references(() => clubs.id, { onDelete: 'cascade' }),
+  teamId: text('team_id').notNull().references(() => teams.id, { onDelete: 'cascade' }),
+  seasonId: text('season_id').notNull().references(() => seasons.id, { onDelete: 'cascade' }),
+  weekday: integer('weekday').notNull(),
+  startTime: text('start_time').notNull(),
+  endTime: text('end_time').notNull(),
+  locationId: text('location_id').notNull().references(() => locations.id),
+  trainerUserId: text('trainer_user_id').references(() => user.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').notNull().defaultNow()
+})
+
+// Materialized sessions: generated from a slot (slotId set) or one-off (slotId null).
+// Cancelled sessions stay visible to the team.
+export const trainingSessions = pgTable('training_sessions', {
+  id: id(),
+  clubId: text('club_id').notNull().references(() => clubs.id, { onDelete: 'cascade' }),
+  teamId: text('team_id').notNull().references(() => teams.id, { onDelete: 'cascade' }),
+  slotId: text('slot_id').references(() => trainingSlots.id, { onDelete: 'set null' }),
+  date: date('date').notNull(),
+  startTime: text('start_time').notNull(),
+  endTime: text('end_time').notNull(),
+  locationId: text('location_id').notNull().references(() => locations.id),
+  trainerUserId: text('trainer_user_id').references(() => user.id, { onDelete: 'set null' }),
+  status: text('status', { enum: ['scheduled', 'cancelled'] }).notNull().default('scheduled'),
+  cancelReason: text('cancel_reason'),
+  createdAt: timestamp('created_at').notNull().defaultNow()
+})
+
+// No-training periods at two levels: teamId null = club-level closure (governs ALL
+// teams, set by admin); teamId set = the team's own period. A team period can never
+// supersede a club closure (enforced in the services, not here).
+export const noTrainingPeriods = pgTable('no_training_periods', {
+  id: id(),
+  clubId: text('club_id').notNull().references(() => clubs.id, { onDelete: 'cascade' }),
+  teamId: text('team_id').references(() => teams.id, { onDelete: 'cascade' }),
+  startDate: date('start_date').notNull(),
+  endDate: date('end_date').notNull(),
+  reason: text('reason').notNull(),
   createdAt: timestamp('created_at').notNull().defaultNow()
 })
 
