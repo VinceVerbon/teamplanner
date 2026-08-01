@@ -13,13 +13,13 @@ function today(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
-async function getTeamOr404(teamId: string) {
+export async function getTeamOr404(teamId: string) {
   const [team] = await getDb().select().from(teams).where(eq(teams.id, teamId))
   if (!team) throw createError({ statusCode: 404, statusMessage: 'Team not found' })
   return team
 }
 
-async function requireTeamManager(requesterId: string, clubId: string, teamId: string): Promise<UserRoles> {
+export async function requireTeamManager(requesterId: string, clubId: string, teamId: string): Promise<UserRoles> {
   const roles = await getUserRoles(requesterId)
   if (!isClubAdmin(roles, clubId) && !isActiveStaffOfTeam(roles, teamId)) {
     throw createError({ statusCode: 403, statusMessage: 'Admin or active team staff role required' })
@@ -52,11 +52,13 @@ async function applicableClosures(clubId: string, teamId: string): Promise<DateR
   return rows
 }
 
-async function validateSessionRefs(clubId: string, teamId: string, locationId: string, trainerUserId?: string | null) {
+export async function validateSessionRefs(clubId: string, teamId: string, locationId: string | null, trainerUserId?: string | null) {
   const db = getDb()
-  const [loc] = await db.select().from(locations)
-    .where(and(eq(locations.id, locationId), eq(locations.clubId, clubId)))
-  if (!loc) throw createError({ statusCode: 404, statusMessage: 'Location not found' })
+  if (locationId) {
+    const [loc] = await db.select().from(locations)
+      .where(and(eq(locations.id, locationId), eq(locations.clubId, clubId)))
+    if (!loc) throw createError({ statusCode: 404, statusMessage: 'Location not found' })
+  }
   if (trainerUserId) {
     const [assignment] = await db.select().from(staffAssignments)
       .where(and(
@@ -70,11 +72,14 @@ async function validateSessionRefs(clubId: string, teamId: string, locationId: s
   }
 }
 
-function validateTimes(startTime: string, endTime: string) {
+export function validateTimes(startTime: string, endTime: string) {
   if (endTime <= startTime) {
     throw createError({ statusCode: 400, statusMessage: 'End time must be after start time' })
   }
 }
+
+/** Exported for F12/F21 (matches ride the same closure query, but are exempt from it). */
+export { applicableClosures }
 
 // --- Weekly slots ---
 
@@ -276,9 +281,12 @@ export async function updateSession(requesterId: string, sessionId: string, patc
     next.cancelReason = reason
   }
   if (patch.status === 'scheduled') next.cancelReason = null
-  const closures = await applicableClosures(session.clubId, session.teamId)
-  if (next.status === 'scheduled' && inAnyRange(next.date, closures)) {
-    throw createError({ statusCode: 409, statusMessage: 'This date falls in a no-training period' })
+  // No-training periods govern TRAININGS; matches (league-scheduled) are exempt.
+  if (session.type === 'training' && next.status === 'scheduled') {
+    const closures = await applicableClosures(session.clubId, session.teamId)
+    if (inAnyRange(next.date, closures)) {
+      throw createError({ statusCode: 409, statusMessage: 'This date falls in a no-training period' })
+    }
   }
   const [updated] = await db.update(trainingSessions).set(next)
     .where(eq(trainingSessions.id, sessionId)).returning()
@@ -314,22 +322,27 @@ export async function getMySchedule(userId: string, opts: { from?: string } = {}
   const sessions = await db.select({
     id: trainingSessions.id,
     teamId: trainingSessions.teamId,
+    type: trainingSessions.type,
     date: trainingSessions.date,
     startTime: trainingSessions.startTime,
     endTime: trainingSessions.endTime,
     status: trainingSessions.status,
     cancelReason: trainingSessions.cancelReason,
-    locationName: locations.name,
+    opponent: trainingSessions.opponent,
+    homeAway: trainingSessions.homeAway,
+    registerLocation: locations.name,
+    locationText: trainingSessions.locationText,
     trainerName: trainer.name
   }).from(trainingSessions)
-    .innerJoin(locations, eq(trainingSessions.locationId, locations.id))
+    .leftJoin(locations, eq(trainingSessions.locationId, locations.id))
     .leftJoin(trainer, eq(trainingSessions.trainerUserId, trainer.id))
     .where(and(inArray(trainingSessions.teamId, teamIds), gte(trainingSessions.date, from)))
     .orderBy(asc(trainingSessions.date), asc(trainingSessions.startTime))
+  const withLocation = sessions.map(s => ({ ...s, locationName: s.registerLocation ?? s.locationText }))
   return teamRows.map(team => ({
     team: { id: team.id, name: team.name },
     myRoles: [...teamRoles.get(team.id)!].sort(),
-    sessions: sessions.filter(s => s.teamId === team.id)
+    sessions: withLocation.filter(s => s.teamId === team.id)
   }))
 }
 
@@ -339,8 +352,9 @@ export async function listTeamSessions(requesterId: string, teamId: string, opts
   await requireTeamViewer(requesterId, team.clubId, teamId)
   const trainer = alias(user, 'trainer')
   const from = opts.from ?? today()
-  return getDb().select({
+  const rows = await getDb().select({
     id: trainingSessions.id,
+    type: trainingSessions.type,
     date: trainingSessions.date,
     startTime: trainingSessions.startTime,
     endTime: trainingSessions.endTime,
@@ -348,12 +362,16 @@ export async function listTeamSessions(requesterId: string, teamId: string, opts
     cancelReason: trainingSessions.cancelReason,
     slotId: trainingSessions.slotId,
     locationId: trainingSessions.locationId,
-    locationName: locations.name,
+    registerLocation: locations.name,
+    locationText: trainingSessions.locationText,
+    opponent: trainingSessions.opponent,
+    homeAway: trainingSessions.homeAway,
     trainerUserId: trainingSessions.trainerUserId,
     trainerName: trainer.name
   }).from(trainingSessions)
-    .innerJoin(locations, eq(trainingSessions.locationId, locations.id))
+    .leftJoin(locations, eq(trainingSessions.locationId, locations.id))
     .leftJoin(trainer, eq(trainingSessions.trainerUserId, trainer.id))
     .where(and(eq(trainingSessions.teamId, teamId), gte(trainingSessions.date, from)))
     .orderBy(asc(trainingSessions.date), asc(trainingSessions.startTime))
+  return rows.map(r => ({ ...r, locationName: r.registerLocation ?? r.locationText }))
 }

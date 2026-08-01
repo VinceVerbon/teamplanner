@@ -109,6 +109,72 @@ const reinstateSession = (id: string) => run(async () => {
   await refreshSessions()
 }, 'Training hersteld')
 
+// F12/F21 matches
+const newMatch = reactive({ date: '', startTime: '', endTime: '', opponent: '', homeAway: 'home' as 'home' | 'away', locationText: '' })
+const homeAwayItems = [
+  { label: 'Thuis', value: 'home' },
+  { label: 'Uit', value: 'away' }
+]
+const addMatch = () => run(async () => {
+  await $fetch(`/api/teams/${teamId}/matches`, {
+    method: 'POST',
+    body: { ...newMatch, endTime: newMatch.endTime || undefined, locationText: newMatch.locationText || null }
+  })
+  Object.assign(newMatch, { date: '', startTime: '', endTime: '', opponent: '', homeAway: 'home', locationText: '' })
+  await refreshSessions()
+}, 'Wedstrijd toegevoegd')
+
+interface PreviewRow {
+  externalUid: string | null
+  date: string
+  startTime: string
+  endTime: string
+  opponent: string
+  homeAway: 'home' | 'away'
+  locationText: string | null
+  summary: string | null
+  utcFlag: boolean
+  alreadyImported: boolean
+}
+const preview = ref<{ rows: PreviewRow[], skipped: { summary: string | null, reason: string }[] } | null>(null)
+const selectedRows = ref<Set<string>>(new Set())
+
+function rowKey(r: PreviewRow): string {
+  return r.externalUid ?? `${r.date}|${r.startTime}|${r.opponent}`
+}
+
+async function onIcalFile(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  const ical = await file.text()
+  await run(async () => {
+    preview.value = await $fetch(`/api/teams/${teamId}/matches/import-preview`, {
+      method: 'POST',
+      body: { ical }
+    })
+    selectedRows.value = new Set(preview.value!.rows.filter(r => !r.alreadyImported).map(rowKey))
+  }, 'Voorbeeld geladen - controleer en importeer')
+}
+
+function toggleRow(r: PreviewRow) {
+  const key = rowKey(r)
+  if (selectedRows.value.has(key)) selectedRows.value.delete(key)
+  else selectedRows.value.add(key)
+  selectedRows.value = new Set(selectedRows.value)
+}
+
+const doImport = () => run(async () => {
+  const rows = (preview.value?.rows || [])
+    .filter(r => selectedRows.value.has(rowKey(r)))
+    .map(({ externalUid, date, startTime, endTime, opponent, homeAway, locationText }) =>
+      ({ externalUid, date, startTime, endTime, opponent, homeAway, locationText }))
+  if (!rows.length) return
+  const res = await $fetch(`/api/teams/${teamId}/matches/import`, { method: 'POST', body: { rows } })
+  toast.add({ title: `${res.imported} wedstrijd(en) geimporteerd, ${res.skipped} overgeslagen` })
+  preview.value = null
+  await refreshSessions()
+}, 'Import verwerkt')
+
 const newPeriod = reactive({ startDate: '', endDate: '', reason: '' })
 const addPeriod = () => run(async () => {
   await $fetch('/api/no-training-periods', { method: 'POST', body: { teamId, ...newPeriod } })
@@ -359,7 +425,128 @@ function fmtDate(d: string): string {
       <UCard>
         <template #header>
           <h2 class="font-semibold">
-            Komende trainingen ({{ (sessions || []).length }})
+            Wedstrijden
+          </h2>
+        </template>
+        <div class="space-y-4">
+          <div
+            v-if="canManage"
+            class="space-y-3"
+          >
+            <UFormField label="Sportlink-import (.ics): kies het bestand, controleer het voorbeeld, en importeer">
+              <input
+                type="file"
+                accept=".ics,text/calendar"
+                class="text-sm"
+                @change="onIcalFile"
+              >
+            </UFormField>
+            <div
+              v-if="preview"
+              class="space-y-2"
+            >
+              <ul class="divide-y divide-default">
+                <li
+                  v-for="r in preview.rows"
+                  :key="rowKey(r)"
+                  class="flex items-center gap-3 py-2"
+                >
+                  <UCheckbox
+                    :model-value="selectedRows.has(rowKey(r))"
+                    :disabled="r.alreadyImported"
+                    @update:model-value="toggleRow(r)"
+                  />
+                  <span :class="r.alreadyImported ? 'text-muted' : ''">
+                    {{ fmtDate(r.date) }} {{ r.startTime }}-{{ r.endTime }}
+                    <strong>{{ r.opponent }}</strong>
+                    ({{ r.homeAway === 'home' ? 'thuis' : 'uit' }})
+                    <span class="text-muted text-sm">{{ r.locationText }}</span>
+                    <UBadge
+                      v-if="r.alreadyImported"
+                      color="neutral"
+                      variant="subtle"
+                      label="al geimporteerd"
+                    />
+                    <UBadge
+                      v-if="r.utcFlag"
+                      color="warning"
+                      variant="subtle"
+                      label="UTC-tijd, controleer"
+                    />
+                  </span>
+                </li>
+              </ul>
+              <p
+                v-for="(s, i) in preview.skipped"
+                :key="i"
+                class="text-sm text-muted"
+              >
+                Overgeslagen: {{ s.summary || '(zonder titel)' }} - {{ s.reason }}
+              </p>
+              <UButton
+                :label="`Importeer ${selectedRows.size} wedstrijd(en)`"
+                :disabled="!selectedRows.size"
+                :loading="busy"
+                @click="doImport"
+              />
+            </div>
+            <USeparator label="of handmatig" />
+            <div class="grid grid-cols-2 md:grid-cols-6 gap-2 items-end">
+              <UFormField label="Datum">
+                <UInput
+                  v-model="newMatch.date"
+                  type="date"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField label="Aanvang">
+                <UInput
+                  v-model="newMatch.startTime"
+                  type="time"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField label="Tegenstander">
+                <UInput
+                  v-model="newMatch.opponent"
+                  class="w-full"
+                  placeholder="RKDES MO17-3"
+                />
+              </UFormField>
+              <UFormField label="Thuis/uit">
+                <USelect
+                  v-model="newMatch.homeAway"
+                  :items="homeAwayItems"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField label="Locatie">
+                <UInput
+                  v-model="newMatch.locationText"
+                  class="w-full"
+                  placeholder="Sportpark ..."
+                />
+              </UFormField>
+              <UButton
+                label="Toevoegen"
+                :loading="busy"
+                @click="addMatch"
+              />
+            </div>
+          </div>
+          <p
+            v-else
+            class="text-sm text-muted"
+          >
+            Wedstrijden staan in het programma hieronder.
+          </p>
+        </div>
+      </UCard>
+
+      <UCard>
+        <template #header>
+          <h2 class="font-semibold">
+            Programma ({{ (sessions || []).length }})
           </h2>
         </template>
         <div class="space-y-4">
@@ -410,7 +597,14 @@ function fmtDate(d: string): string {
             >
               <div class="flex items-center justify-between gap-2">
                 <span :class="s.status === 'cancelled' ? 'line-through text-muted' : ''">
+                  <UBadge
+                    v-if="s.type === 'match'"
+                    color="primary"
+                    variant="subtle"
+                    :label="s.homeAway === 'home' ? 'thuis' : 'uit'"
+                  />
                   {{ fmtDate(s.date) }} {{ s.startTime }}-{{ s.endTime }}
+                  <strong v-if="s.type === 'match'">{{ s.opponent }}</strong>
                   <span class="text-muted text-sm">{{ s.locationName }}<template v-if="s.trainerName"> - {{ s.trainerName }}</template></span>
                 </span>
                 <span class="flex items-center gap-2">

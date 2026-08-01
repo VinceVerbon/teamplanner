@@ -67,8 +67,8 @@ First tenant: **FC Aalsmeer**, starting with one team: **MO17-4**. One club with
 |----|---|--------|---------|
 | F10 | P1 | in-progress | **Training sessions**: weekly default schedule (fixed slots generating sessions), reusable **locations register**, **trainer per session**, **season bounds** (series run within a season), plus one-off sessions, edit and cancel (visible to team). **No-training periods at two levels**: admin/club-level closures governing all teams, and team-level periods for the team's own schedule - a team can never supersede admin boundaries. |
 | F11 | P1 | in-progress | **Upcoming schedule view**: per member "my team's next trainings/matches"; staff see all their teams. **Planned absences are visible in this view.** |
-| F12 | P1 | planned | **Matches** as event type on the same schedule/absence machinery - needed in MVP (they feed the automated pre-match mails, F16). Tournaments and social events follow later (P3, same machinery). |
-| F21 | P1 | planned | **Sportlink match import**: parse a Sportlink `.ical` (or similar) file containing all matches, locations and times; **preview before load**, then import into the schedule. |
+| F12 | P1 | in-progress | **Matches** as event type on the same schedule/absence machinery - needed in MVP (they feed the automated pre-match mails, F16). Tournaments and social events follow later (P3, same machinery). |
+| F21 | P1 | in-progress | **Sportlink match import**: parse a Sportlink `.ical` (or similar) file containing all matches, locations and times; **preview before load**, then import into the schedule. |
 
 ### Attendance
 

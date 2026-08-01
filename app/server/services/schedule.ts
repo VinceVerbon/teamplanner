@@ -136,9 +136,11 @@ export async function createNoTrainingPeriod(
   const [period] = await db.insert(noTrainingPeriods)
     .values({ clubId: club.id, teamId, startDate: input.startDate, endDate: input.endDate, reason })
     .returning()
-  // Cancel overlapping scheduled sessions in scope.
+  // Cancel overlapping scheduled TRAININGS in scope - matches (F12) are league-
+  // scheduled and exempt from no-training periods.
   const scope = and(
     eq(trainingSessions.clubId, club.id),
+    eq(trainingSessions.type, 'training'),
     eq(trainingSessions.status, 'scheduled'),
     gte(trainingSessions.date, input.startDate),
     lte(trainingSessions.date, input.endDate),

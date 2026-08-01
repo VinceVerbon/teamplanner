@@ -136,22 +136,31 @@ export const trainingSlots = pgTable('training_slots', {
   createdAt: timestamp('created_at').notNull().defaultNow()
 })
 
-// Materialized sessions: generated from a slot (slotId set) or one-off (slotId null).
-// Cancelled sessions stay visible to the team.
+// Materialized sessions/events: trainings generated from a slot (slotId set) or
+// one-off (slotId null), and matches (F12) as event type on the SAME machinery so
+// F13 absences attach uniformly. Cancelled sessions stay visible to the team.
+// Trainings carry a register locationId; imported matches may carry a free-text
+// location instead (away grounds don't belong in the club register).
 export const trainingSessions = pgTable('training_sessions', {
   id: id(),
   clubId: text('club_id').notNull().references(() => clubs.id, { onDelete: 'cascade' }),
   teamId: text('team_id').notNull().references(() => teams.id, { onDelete: 'cascade' }),
+  type: text('type', { enum: ['training', 'match'] }).notNull().default('training'),
   slotId: text('slot_id').references(() => trainingSlots.id, { onDelete: 'set null' }),
   date: date('date').notNull(),
   startTime: text('start_time').notNull(),
   endTime: text('end_time').notNull(),
-  locationId: text('location_id').notNull().references(() => locations.id),
+  locationId: text('location_id').references(() => locations.id),
+  locationText: text('location_text'),
   trainerUserId: text('trainer_user_id').references(() => user.id, { onDelete: 'set null' }),
+  // match fields (F12/F21)
+  opponent: text('opponent'),
+  homeAway: text('home_away', { enum: ['home', 'away'] }),
+  externalUid: text('external_uid'),
   status: text('status', { enum: ['scheduled', 'cancelled'] }).notNull().default('scheduled'),
   cancelReason: text('cancel_reason'),
   createdAt: timestamp('created_at').notNull().defaultNow()
-})
+}, t => [uniqueIndex('training_sessions_team_external_uid_uq').on(t.teamId, t.externalUid)])
 
 // No-training periods at two levels: teamId null = club-level closure (governs ALL
 // teams, set by admin); teamId set = the team's own period. A team period can never

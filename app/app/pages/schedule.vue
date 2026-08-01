@@ -58,7 +58,14 @@ function fmtDate(d: string): string {
           class="flex items-center justify-between py-2"
         >
           <span :class="s.status === 'cancelled' ? 'line-through text-muted' : ''">
+            <UBadge
+              v-if="s.type === 'match'"
+              color="primary"
+              variant="subtle"
+              :label="s.homeAway === 'home' ? 'wedstrijd thuis' : 'wedstrijd uit'"
+            />
             {{ fmtDate(s.date) }} {{ s.startTime }}-{{ s.endTime }}
+            <strong v-if="s.type === 'match'">{{ s.opponent }}</strong>
             <span class="text-muted text-sm">
               {{ s.locationName }}<template v-if="s.trainerName"> - {{ s.trainerName }}</template>
             </span>
