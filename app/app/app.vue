@@ -43,6 +43,13 @@ async function logout() {
         <UColorModeButton />
         <template v-if="session.data?.user">
           <UButton
+            to="/schedule"
+            icon="i-lucide-calendar"
+            variant="ghost"
+            color="neutral"
+            label="Schema"
+          />
+          <UButton
             v-if="canManage"
             to="/admin"
             icon="i-lucide-settings"

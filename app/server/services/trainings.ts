@@ -1,5 +1,5 @@
 import { createError } from 'h3'
-import { eq, and, gte, or, isNull, asc } from 'drizzle-orm'
+import { eq, and, gte, or, isNull, asc, inArray } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { getDb } from '../utils/db'
 import { getUserRoles, isClubAdmin, isActiveStaffOfTeam, type UserRoles } from '../utils/roles'
@@ -283,6 +283,54 @@ export async function updateSession(requesterId: string, sessionId: string, patc
   const [updated] = await db.update(trainingSessions).set(next)
     .where(eq(trainingSessions.id, sessionId)).returning()
   return updated!
+}
+
+/**
+ * F11: the member's own upcoming schedule across every team they are involved with -
+ * as player (one team), staff (all their teams), and/or parent (their kids' teams).
+ * One entry per team with the member's roles on it; sessions include cancelled ones.
+ */
+export async function getMySchedule(userId: string, opts: { from?: string } = {}) {
+  const db = getDb()
+  const roles = await getUserRoles(userId)
+  const teamRoles = new Map<string, Set<string>>()
+  const addRole = (teamId: string, role: string) => {
+    if (!teamRoles.has(teamId)) teamRoles.set(teamId, new Set())
+    teamRoles.get(teamId)!.add(role)
+  }
+  if (roles.playerTeamId) addRole(roles.playerTeamId, 'player')
+  for (const teamId of roles.staffTeamIds) addRole(teamId, 'staff')
+  if (roles.parentOfUserIds.length > 0) {
+    const kidRegs = await db.select({ teamId: playerRegistrations.teamId, userId: playerRegistrations.userId })
+      .from(playerRegistrations)
+      .where(inArray(playerRegistrations.userId, roles.parentOfUserIds))
+    for (const reg of kidRegs) addRole(reg.teamId, 'parent')
+  }
+  if (teamRoles.size === 0) return []
+  const teamIds = [...teamRoles.keys()]
+  const teamRows = await db.select().from(teams).where(inArray(teams.id, teamIds))
+  const trainer = alias(user, 'trainer')
+  const from = opts.from ?? today()
+  const sessions = await db.select({
+    id: trainingSessions.id,
+    teamId: trainingSessions.teamId,
+    date: trainingSessions.date,
+    startTime: trainingSessions.startTime,
+    endTime: trainingSessions.endTime,
+    status: trainingSessions.status,
+    cancelReason: trainingSessions.cancelReason,
+    locationName: locations.name,
+    trainerName: trainer.name
+  }).from(trainingSessions)
+    .innerJoin(locations, eq(trainingSessions.locationId, locations.id))
+    .leftJoin(trainer, eq(trainingSessions.trainerUserId, trainer.id))
+    .where(and(inArray(trainingSessions.teamId, teamIds), gte(trainingSessions.date, from)))
+    .orderBy(asc(trainingSessions.date), asc(trainingSessions.startTime))
+  return teamRows.map(team => ({
+    team: { id: team.id, name: team.name },
+    myRoles: [...teamRoles.get(team.id)!].sort(),
+    sessions: sessions.filter(s => s.teamId === team.id)
+  }))
 }
 
 /** Team schedule (incl. cancelled sessions - they stay visible). Viewers per requireTeamViewer. */
