@@ -27,7 +27,7 @@ watch(() => session.value.data?.user?.id, (id) => {
 }, { immediate: true })
 
 const canManage = computed(() =>
-  !!me.value && (me.value.roles.adminOfClubIds.length > 0 || me.value.roles.staffTeamIds.length > 0))
+  !!me.value && (me.value.roles.instanceAdmin || me.value.roles.adminOfClubIds.length > 0 || me.value.roles.staffTeamIds.length > 0))
 
 async function logout() {
   await authClient.signOut()

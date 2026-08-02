@@ -37,17 +37,22 @@ export async function createLocation(requesterId: string, input: { name: string,
   return loc!
 }
 
-export async function updateLocation(requesterId: string, locationId: string, patch: { name?: string, address?: string }) {
+export async function updateLocation(requesterId: string, locationId: string, patch: { name?: string, address?: string, isClubLocation?: boolean }) {
   const club = await requireClub()
   await requireAdmin(requesterId, club.id)
   const name = patch.name?.trim()
   if (name !== undefined && name.length < 2) {
     throw createError({ statusCode: 400, statusMessage: 'Location name too short' })
   }
+  // F27: the main location is by definition a club location - unmark main first.
+  if (patch.isClubLocation === false && club.mainLocationId === locationId) {
+    throw createError({ statusCode: 400, statusMessage: 'This is the main location; choose another main location first' })
+  }
   const [loc] = await getDb().update(locations)
     .set({
       ...(name !== undefined ? { name } : {}),
-      ...(patch.address !== undefined ? { address: patch.address.trim() || null } : {})
+      ...(patch.address !== undefined ? { address: patch.address.trim() || null } : {}),
+      ...(patch.isClubLocation !== undefined ? { isClubLocation: patch.isClubLocation } : {})
     })
     .where(and(eq(locations.id, locationId), eq(locations.clubId, club.id)))
     .returning()

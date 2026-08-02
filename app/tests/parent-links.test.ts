@@ -1,6 +1,6 @@
 // Test-set for F5 (parent-player linking + age-based attendance management).
 import { describe, it, expect, beforeAll } from 'vitest'
-import { freshDb } from './setup'
+import { freshDb, makeInstanceAdmin } from './setup'
 import { getDb } from '../server/utils/db'
 import { createClub } from '../server/services/clubs'
 import { createTeam } from '../server/services/teams'
@@ -50,6 +50,7 @@ beforeAll(async () => {
   teen16 = await makeUser('teen16@example.com', dobYearsAgo(16))
   adult19 = await makeUser('adult19@example.com', dobYearsAgo(19))
   outsider = await makeUser('outsider@example.com')
+  await makeInstanceAdmin(admin)
   const club = await createClub(admin, { slug: 'fcaalsmeer', name: 'FC Aalsmeer' })
   clubId = club.id
   teamA = (await createTeam(admin, clubId, 'MO17-4')).id

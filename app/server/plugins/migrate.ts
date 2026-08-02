@@ -1,5 +1,5 @@
 import { migrateDb } from '../utils/db'
-import { ensureBootstrapAdmin } from '../services/accounts'
+import { ensureBootstrapAdmin, ensureInstanceAdminBackfill } from '../services/accounts'
 
 export default defineNitroPlugin(async () => {
   await migrateDb()
@@ -7,5 +7,10 @@ export default defineNitroPlugin(async () => {
   const { seeded } = await ensureBootstrapAdmin()
   if (seeded) {
     console.info('[teamplanner] Fresh database: seeded default admin admin@teamplanner.local (set its password on first login)')
+  }
+  // F26: promote a pre-split bootstrap admin to instance admin (no-op otherwise).
+  const { backfilled } = await ensureInstanceAdminBackfill()
+  if (backfilled) {
+    console.info('[teamplanner] Backfilled: bootstrap admin promoted to instance admin')
   }
 })

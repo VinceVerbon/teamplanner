@@ -1,7 +1,7 @@
 // Test-set for F24 enforcement: the medium standard on every password-setting path
 // (signup, reset, change) and the admin-configurable club policy.
 import { describe, it, expect, beforeAll } from 'vitest'
-import { freshDb } from './setup'
+import { freshDb, makeInstanceAdmin } from './setup'
 import { sentMails } from '../server/utils/mailer'
 
 let auth: typeof import('../server/utils/auth').auth
@@ -76,6 +76,7 @@ describe('F24 club-configurable policy', () => {
     const [admin] = await getDb().insert(user)
       .values({ name: 'Admin', email: 'admin@example.com' }).returning()
     adminId = admin!.id
+    await makeInstanceAdmin(adminId)
     const club = await createClub(adminId, { slug: 'fcaalsmeer', name: 'FC Aalsmeer' })
     clubId = club.id
   })

@@ -17,10 +17,19 @@ const CLASS_LABELS: Record<string, string> = {
 
 const todayStr = new Date().toISOString().slice(0, 10)
 
+const { load: loadFormats, fmtDate: fmtDateBase, settings: fmtSettings } = useFormats()
+onMounted(loadFormats)
+
 function fmtDate(d: string): string {
-  return new Date(`${d}T00:00:00`).toLocaleDateString('nl-NL', {
-    weekday: 'long', day: 'numeric', month: 'long'
-  })
+  // Weekday-first reads naturally in a schedule; the date follows the instance format (F26).
+  if (fmtSettings.value.dateFormat === 'DD-MM-YYYY') {
+    return new Date(`${d}T00:00:00`).toLocaleDateString('nl-NL', {
+      weekday: 'long', day: 'numeric', month: 'long'
+    })
+  }
+  const weekday = new Date(`${d}T00:00:00`).toLocaleDateString(
+    fmtSettings.value.dateFormat === 'MM/DD/YYYY' ? 'en-US' : 'nl-NL', { weekday: 'long' })
+  return `${weekday} ${fmtDateBase(d)}`
 }
 
 // --- F13 report/withdraw ---

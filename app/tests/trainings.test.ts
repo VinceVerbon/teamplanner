@@ -1,7 +1,7 @@
 // Test-set for F10 (trainings): weekly slots -> sessions, locations, seasons,
 // one-offs, edit/cancel, and two-level no-training periods.
 import { describe, it, expect, beforeAll } from 'vitest'
-import { freshDb } from './setup'
+import { freshDb, makeInstanceAdmin } from './setup'
 import { getDb } from '../server/utils/db'
 import { createClub } from '../server/services/clubs'
 import { createTeam } from '../server/services/teams'
@@ -44,6 +44,7 @@ beforeAll(async () => {
   coach = await makeUser('coach@example.com')
   player = await makeUser('player@example.com')
   outsider = await makeUser('outsider@example.com')
+  await makeInstanceAdmin(admin)
   const club = await createClub(admin, { slug: 'fcaalsmeer', name: 'FC Aalsmeer' })
   clubId = club.id
   teamA = (await createTeam(admin, clubId, 'MO17-4')).id

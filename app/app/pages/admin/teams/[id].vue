@@ -187,8 +187,17 @@ const removePeriod = (id: string) => run(async () => {
   await refreshPeriods()
 }, 'Periode verwijderd')
 
+const { load: loadFormats, fmtDate: fmtDateBase, settings: fmtSettings } = useFormats()
+onMounted(loadFormats)
+
 function fmtDate(d: string): string {
-  return new Date(`${d}T00:00:00`).toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+  // Weekday prefix helps planning; the date itself follows the instance format (F26).
+  if (fmtSettings.value.dateFormat === 'DD-MM-YYYY') {
+    return new Date(`${d}T00:00:00`).toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+  }
+  const weekday = new Date(`${d}T00:00:00`).toLocaleDateString(
+    fmtSettings.value.dateFormat === 'MM/DD/YYYY' ? 'en-US' : 'nl-NL', { weekday: 'short' })
+  return `${weekday} ${fmtDateBase(d)}`
 }
 
 // --- F13 staff corrections + F15 stats ---
@@ -219,7 +228,7 @@ const removeAbsence = (absenceId: string) => run(async () => {
 </script>
 
 <template>
-  <UContainer class="max-w-3xl py-16 space-y-6">
+  <div class="space-y-6">
     <UAlert
       v-if="error"
       color="error"
@@ -848,5 +857,5 @@ const removeAbsence = (absenceId: string) => run(async () => {
         </div>
       </UCard>
     </template>
-  </UContainer>
+  </div>
 </template>

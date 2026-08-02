@@ -31,10 +31,12 @@ beforeAll(async () => {
 })
 
 describe('F23 admin account creation', () => {
-  it('requires a club first (edge)', async () => {
-    await expect(accounts.createMemberAccount(adminId, {
-      name: 'Jan Janssen', email: 'jan@example.com', password: 'Tijdelijk-Wachtwoord-1'
-    })).rejects.toMatchObject({ statusCode: 409 })
+  it('an instance admin can create accounts even before any club exists (F26)', async () => {
+    const created = await accounts.createMemberAccount(adminId, {
+      name: 'Vroege Vogel', email: 'vroeg@example.com', password: 'Prima-Wachtwoord-1',
+      mustChangePassword: false
+    })
+    expect(created.email).toBe('vroeg@example.com')
   })
 
   it('admin creates an account with an unverified email; sign-in works immediately', async () => {

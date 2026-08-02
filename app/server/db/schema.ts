@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, date, integer, uniqueIndex } from 'drizzle-orm/pg-core'
+import { pgTable, text, timestamp, boolean, date, integer, uniqueIndex, type AnyPgColumn } from 'drizzle-orm/pg-core'
 
 const id = () => text('id').primaryKey().$defaultFn(() => crypto.randomUUID())
 
@@ -61,6 +61,25 @@ export const verification = pgTable('verification', {
   updatedAt: timestamp('updated_at').notNull().defaultNow()
 })
 
+// --- instance level (F26): the deployment is not the club - one instance can hold
+// multiple clubs later. Instance admins manage instance concerns (settings, clubs,
+// instance admins); club admins manage their club only.
+
+export const instanceAdmins = pgTable('instance_admins', {
+  id: id(),
+  userId: text('user_id').notNull().unique().references(() => user.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').notNull().defaultNow()
+})
+
+// Single-row settings table (lazily created with defaults on first read).
+export const instanceSettings = pgTable('instance_settings', {
+  id: id(),
+  dateFormat: text('date_format', { enum: ['DD-MM-YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD'] }).notNull().default('DD-MM-YYYY'),
+  timeFormat: text('time_format', { enum: ['24h', '12h'] }).notNull().default('24h'),
+  weekNumbering: text('week_numbering', { enum: ['iso', 'us'] }).notNull().default('iso'),
+  createdAt: timestamp('created_at').notNull().defaultNow()
+})
+
 // --- domain tables (club = tenant root; every domain table carries club_id) ---
 
 export const clubs = pgTable('clubs', {
@@ -75,6 +94,9 @@ export const clubs = pgTable('clubs', {
   // F24: enforced password strength standard; 'medium' is the default, lowering it is
   // an explicit admin decision (confirmed in the UI before it activates).
   passwordPolicy: text('password_policy', { enum: ['low', 'medium', 'strong'] }).notNull().default('medium'),
+  // F27: exactly one main location (the club's own address/main site); by definition
+  // a club location. Forward reference: locations is declared below.
+  mainLocationId: text('main_location_id').references((): AnyPgColumn => locations.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').notNull().defaultNow()
 })
 
@@ -131,6 +153,8 @@ export const locations = pgTable('locations', {
   clubId: text('club_id').notNull().references(() => clubs.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   address: text('address'),
+  // F27: marked club locations (own grounds/sites); the main one is clubs.mainLocationId.
+  isClubLocation: boolean('is_club_location').notNull().default(false),
   createdAt: timestamp('created_at').notNull().defaultNow()
 })
 

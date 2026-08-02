@@ -4,8 +4,8 @@ import { hashPassword, verifyPassword } from 'better-auth/crypto'
 import { getDb } from '../utils/db'
 import { auth } from '../utils/auth'
 import { assertPasswordAllowed } from '../utils/password-policy'
-import { getUserRoles, isClubAdmin } from '../utils/roles'
-import { user, account, session, clubs } from '../db/schema'
+import { getUserRoles, isClubAdmin, isInstanceAdmin } from '../utils/roles'
+import { user, account, session, clubs, instanceAdmins } from '../db/schema'
 
 export const BOOTSTRAP_ADMIN_EMAIL = 'admin@teamplanner.local'
 const CREDENTIAL_PROVIDER = 'credential'
@@ -32,7 +32,25 @@ export async function ensureBootstrapAdmin(): Promise<{ seeded: boolean }> {
     userId: admin!.id,
     password: await hashPassword('')
   })
+  // F26: the seeded account is the first INSTANCE admin (not implicitly a club admin).
+  await db.insert(instanceAdmins).values({ userId: admin!.id })
   return { seeded: true }
+}
+
+/**
+ * F26 backfill: databases seeded before the instance-admin split have a bootstrap admin
+ * but zero instance_admins rows - a state that locks instance management entirely.
+ * Promote the bootstrap admin once; no-op whenever any instance admin exists.
+ */
+export async function ensureInstanceAdminBackfill(): Promise<{ backfilled: boolean }> {
+  const db = getDb()
+  const existing = await db.select({ id: instanceAdmins.id }).from(instanceAdmins).limit(1)
+  if (existing.length > 0) return { backfilled: false }
+  const [bootstrap] = await db.select({ id: user.id }).from(user)
+    .where(eq(user.isBootstrapAdmin, true))
+  if (!bootstrap) return { backfilled: false }
+  await db.insert(instanceAdmins).values({ userId: bootstrap.id })
+  return { backfilled: true }
 }
 
 async function findPendingBootstrapAdmin() {
@@ -86,16 +104,17 @@ export interface CreateAccountInput {
  * F23: admin creates an account directly - no self-registration, no email verification
  * required (the admin vouches for the address; emailVerified is set so sign-in works
  * immediately). Optionally forces a password change on first login.
+ * F26: identity is instance-level, so instance admins may always do this; club admins
+ * may too (they onboard their members).
  */
 export async function createMemberAccount(requesterId: string, input: CreateAccountInput) {
   const db = getDb()
-  const [club] = await db.select({ id: clubs.id }).from(clubs).limit(1)
-  if (!club) {
-    throw createError({ statusCode: 409, statusMessage: 'Create the club first' })
-  }
   const roles = await getUserRoles(requesterId)
-  if (!isClubAdmin(roles, club.id)) {
-    throw createError({ statusCode: 403, statusMessage: 'Admin role required' })
+  if (!isInstanceAdmin(roles)) {
+    const [club] = await db.select({ id: clubs.id }).from(clubs).limit(1)
+    if (!club || !isClubAdmin(roles, club.id)) {
+      throw createError({ statusCode: 403, statusMessage: 'Instance admin or club admin role required' })
+    }
   }
   const email = input.email.trim().toLowerCase()
   const name = input.name.trim()

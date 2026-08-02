@@ -94,17 +94,19 @@ describe('F22 first-run password set', () => {
   })
 })
 
-describe('F22 admin rights', () => {
-  it('the bootstrap admin administers the club without a club_admins row', async () => {
+describe('F22/F26 admin rights', () => {
+  it('the bootstrap admin is the first INSTANCE admin, not implicitly a club admin', async () => {
     const { getDb } = await import('../server/utils/db')
     const { user, clubs } = await import('../server/db/schema')
-    const { getUserRoles, isClubAdmin } = await import('../server/utils/roles')
-    // Club created by someone else entirely (direct insert, no club_admins row for anyone).
+    const { getUserRoles, isClubAdmin, isInstanceAdmin } = await import('../server/utils/roles')
+    // Club inserted by someone else entirely (no club_admins row for anyone).
     const [club] = await getDb().insert(clubs).values({ slug: 'fcaalsmeer', name: 'FC Aalsmeer' }).returning()
     const [admin] = await getDb().select().from(user)
       .where(eq(user.email, accounts.BOOTSTRAP_ADMIN_EMAIL))
     const roles = await getUserRoles(admin!.id)
-    expect(isClubAdmin(roles, club!.id)).toBe(true)
+    expect(isInstanceAdmin(roles)).toBe(true)
+    // F26: club management is entirely separate from instance management.
+    expect(isClubAdmin(roles, club!.id)).toBe(false)
   })
 })
 
@@ -121,5 +123,35 @@ describe('F22 seeding - existing installs are never touched', () => {
     const rows = await getDb().select().from(user)
       .where(eq(user.email, accounts.BOOTSTRAP_ADMIN_EMAIL))
     expect(rows).toHaveLength(0)
+  })
+})
+
+describe('F26 instance-admin backfill for pre-split databases', () => {
+  it('promotes a bootstrap admin that has no instance_admins row, exactly once (edge)', async () => {
+    await freshDb()
+    const { getDb } = await import('../server/utils/db')
+    const { user, instanceAdmins } = await import('../server/db/schema')
+    // Simulate a database seeded before the split: bootstrap flag, no instance admin.
+    const [admin] = await getDb().insert(user).values({
+      name: 'Beheerder', email: accounts.BOOTSTRAP_ADMIN_EMAIL,
+      emailVerified: true, isBootstrapAdmin: true
+    }).returning()
+    const first = await accounts.ensureInstanceAdminBackfill()
+    expect(first.backfilled).toBe(true)
+    const rows = await getDb().select().from(instanceAdmins)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.userId).toBe(admin!.id)
+    // Idempotent: never a second row.
+    expect((await accounts.ensureInstanceAdminBackfill()).backfilled).toBe(false)
+    expect(await getDb().select().from(instanceAdmins)).toHaveLength(1)
+  })
+
+  it('does nothing on a database without a bootstrap admin (edge)', async () => {
+    await freshDb()
+    const { getDb } = await import('../server/utils/db')
+    const { user, instanceAdmins } = await import('../server/db/schema')
+    await getDb().insert(user).values({ name: 'Regular', email: 'regular@example.com' })
+    expect((await accounts.ensureInstanceAdminBackfill()).backfilled).toBe(false)
+    expect(await getDb().select().from(instanceAdmins)).toHaveLength(0)
   })
 })

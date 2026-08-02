@@ -1,6 +1,6 @@
 // Test-set for F12 (matches) + F21 (Sportlink .ical import with preview).
 import { describe, it, expect, beforeAll } from 'vitest'
-import { freshDb } from './setup'
+import { freshDb, makeInstanceAdmin } from './setup'
 import { getDb } from '../server/utils/db'
 import { createClub } from '../server/services/clubs'
 import { createTeam } from '../server/services/teams'
@@ -57,6 +57,7 @@ beforeAll(async () => {
   admin = await makeUser('admin@example.com')
   coach = await makeUser('coach@example.com')
   player = await makeUser('player@example.com')
+  await makeInstanceAdmin(admin)
   const club = await createClub(admin, { slug: 'fcaalsmeer', name: 'FC Aalsmeer' })
   teamA = (await createTeam(admin, club.id, 'MO17-4')).id
   await addStaff(admin, teamA, 'coach@example.com')

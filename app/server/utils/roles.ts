@@ -1,8 +1,12 @@
 import { eq, and } from 'drizzle-orm'
 import { getDb } from './db'
-import { user, clubs, clubAdmins, staffAssignments, playerRegistrations, parentLinks } from '../db/schema'
+import { instanceAdmins, clubAdmins, staffAssignments, playerRegistrations, parentLinks } from '../db/schema'
 
 export interface UserRoles {
+  /** F26: instance (deployment) admin - manages instance settings, clubs, instance
+   * admins and accounts. Deliberately NOT implying club admin: club management is
+   * entirely separate. */
+  instanceAdmin: boolean
   adminOfClubIds: string[]
   /** Active staff assignments only - pending ones grant nothing yet (F8). */
   staffTeamIds: string[]
@@ -15,7 +19,7 @@ export interface UserRoles {
 
 export async function getUserRoles(userId: string): Promise<UserRoles> {
   const db = getDb()
-  const [admins, staff, player, parents, [self]] = await Promise.all([
+  const [admins, staff, player, parents, instance] = await Promise.all([
     db.select({ clubId: clubAdmins.clubId }).from(clubAdmins).where(eq(clubAdmins.userId, userId)),
     db.select({ teamId: staffAssignments.teamId, status: staffAssignments.status })
       .from(staffAssignments).where(eq(staffAssignments.userId, userId)),
@@ -24,22 +28,20 @@ export async function getUserRoles(userId: string): Promise<UserRoles> {
     db.select({ playerUserId: parentLinks.playerUserId })
       .from(parentLinks)
       .where(and(eq(parentLinks.parentUserId, userId), eq(parentLinks.status, 'active'))),
-    db.select({ isBootstrapAdmin: user.isBootstrapAdmin }).from(user).where(eq(user.id, userId))
+    db.select({ id: instanceAdmins.id }).from(instanceAdmins).where(eq(instanceAdmins.userId, userId))
   ])
-  let adminClubIds = admins.map(a => a.clubId)
-  // F22: the seeded bootstrap admin administers every club of this deployment (v1: the
-  // single club) without needing club_admins rows.
-  if (self?.isBootstrapAdmin) {
-    const allClubs = await db.select({ id: clubs.id }).from(clubs)
-    adminClubIds = [...new Set([...adminClubIds, ...allClubs.map(c => c.id)])]
-  }
   return {
-    adminOfClubIds: adminClubIds,
+    instanceAdmin: instance.length > 0,
+    adminOfClubIds: admins.map(a => a.clubId),
     staffTeamIds: staff.filter(s => s.status === 'active').map(s => s.teamId),
     pendingStaffTeamIds: staff.filter(s => s.status === 'pending').map(s => s.teamId),
     playerTeamId: player[0]?.teamId ?? null,
     parentOfUserIds: parents.map(p => p.playerUserId)
   }
+}
+
+export function isInstanceAdmin(roles: UserRoles): boolean {
+  return roles.instanceAdmin
 }
 
 export function isClubAdmin(roles: UserRoles, clubId: string): boolean {

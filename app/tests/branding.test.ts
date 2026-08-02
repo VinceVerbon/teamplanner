@@ -1,6 +1,6 @@
 // Test-set for F20 (club branding & theming).
 import { describe, it, expect, beforeAll } from 'vitest'
-import { freshDb } from './setup'
+import { freshDb, makeInstanceAdmin } from './setup'
 import { getDb } from '../server/utils/db'
 import {
   createClub, getCurrentClub, setClubLogo, getClubLogo, setClubBranding
@@ -24,6 +24,7 @@ beforeAll(async () => {
   await freshDb()
   admin = await makeUser('admin@example.com')
   member = await makeUser('member@example.com')
+  await makeInstanceAdmin(admin)
   clubId = (await createClub(admin, { slug: 'fcaalsmeer', name: 'FC Aalsmeer' })).id
 })
 

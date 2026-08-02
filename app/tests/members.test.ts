@@ -1,6 +1,6 @@
 // Test-set for F8 (member administration) - main flows and expected edge cases.
 import { describe, it, expect, beforeAll } from 'vitest'
-import { freshDb } from './setup'
+import { freshDb, makeInstanceAdmin } from './setup'
 import { getDb } from '../server/utils/db'
 import { createClub } from '../server/services/clubs'
 import { createTeam } from '../server/services/teams'
@@ -32,6 +32,7 @@ beforeAll(async () => {
   player1 = await makeUser('player1@example.com')
   outsider = await makeUser('outsider@example.com')
   await makeUser('player2@example.com')
+  await makeInstanceAdmin(admin)
   const club = await createClub(admin, { slug: 'fcaalsmeer', name: 'FC Aalsmeer' })
   clubId = club.id
   teamA = (await createTeam(admin, clubId, 'MO17-4')).id

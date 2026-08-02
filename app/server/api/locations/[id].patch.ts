@@ -4,7 +4,8 @@ import { updateLocation } from '../../services/schedule'
 
 const bodySchema = z.object({
   name: z.string().min(1).optional(),
-  address: z.string().optional()
+  address: z.string().optional(),
+  isClubLocation: z.boolean().optional()
 })
 
 export default defineEventHandler(async (event) => {

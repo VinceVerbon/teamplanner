@@ -1,6 +1,6 @@
 // Test-set for F11 (upcoming schedule view): getMySchedule across roles.
 import { describe, it, expect, beforeAll } from 'vitest'
-import { freshDb } from './setup'
+import { freshDb, makeInstanceAdmin } from './setup'
 import { getDb } from '../server/utils/db'
 import { createClub } from '../server/services/clubs'
 import { createTeam } from '../server/services/teams'
@@ -35,6 +35,7 @@ beforeAll(async () => {
   playerA = await makeUser('playera@example.com')
   parent1 = await makeUser('parent1@example.com')
   nobody = await makeUser('nobody@example.com')
+  await makeInstanceAdmin(admin)
   const club = await createClub(admin, { slug: 'fcaalsmeer', name: 'FC Aalsmeer' })
   teamA = (await createTeam(admin, club.id, 'MO17-4')).id
   teamB = (await createTeam(admin, club.id, 'MO15-2')).id

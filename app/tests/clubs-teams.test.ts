@@ -1,6 +1,6 @@
 // Test-set for F6 (club setup) and F7 (team management) - main flows and expected edge cases.
 import { describe, it, expect, beforeAll } from 'vitest'
-import { freshDb } from './setup'
+import { freshDb, makeInstanceAdmin } from './setup'
 import { getDb } from '../server/utils/db'
 import { createClub, getCurrentClub, updateClub } from '../server/services/clubs'
 import { listTeams, createTeam, updateTeam } from '../server/services/teams'
@@ -9,6 +9,7 @@ import { user } from '../server/db/schema'
 
 let founder: string
 let outsider: string
+let secondInstanceAdmin: string
 let clubId: string
 
 async function makeUser(email: string): Promise<string> {
@@ -20,6 +21,9 @@ beforeAll(async () => {
   await freshDb()
   founder = await makeUser('founder@example.com')
   outsider = await makeUser('outsider@example.com')
+  secondInstanceAdmin = await makeUser('second-admin@example.com')
+  await makeInstanceAdmin(founder)
+  await makeInstanceAdmin(secondInstanceAdmin)
 })
 
 describe('F6 club setup - main flow', () => {
@@ -27,7 +31,7 @@ describe('F6 club setup - main flow', () => {
     expect(await getCurrentClub()).toBeNull()
   })
 
-  it('first user creates the club and becomes its admin', async () => {
+  it('an instance admin creates the club and becomes its club admin (F26)', async () => {
     const club = await createClub(founder, { slug: 'fcaalsmeer', name: 'FC Aalsmeer' })
     clubId = club.id
     expect(club.slug).toBe('fcaalsmeer')
@@ -43,8 +47,13 @@ describe('F6 club setup - main flow', () => {
 })
 
 describe('F6 club setup - edge cases', () => {
-  it('a second club is rejected (single-club v1)', async () => {
+  it('a non-instance-admin cannot create a club at all (F26)', async () => {
     await expect(createClub(outsider, { slug: 'other', name: 'Other Club' }))
+      .rejects.toMatchObject({ statusCode: 403 })
+  })
+
+  it('a second club is rejected even for instance admins (single-club v1)', async () => {
+    await expect(createClub(secondInstanceAdmin, { slug: 'other', name: 'Other Club' }))
       .rejects.toMatchObject({ statusCode: 409 })
   })
 
@@ -54,15 +63,16 @@ describe('F6 club setup - edge cases', () => {
   })
 
   it('invalid slug is rejected', async () => {
-    await freshDbTempCheck()
+    await expect(createClub(secondInstanceAdmin, { slug: 'Bad Slug!', name: 'X' }))
+      .rejects.toMatchObject({ statusCode: 400 })
+  })
+
+  it('an instance admin of another club is NOT club admin here (F26 separation)', async () => {
+    const roles = await getUserRoles(secondInstanceAdmin)
+    expect(isClubAdmin(roles, clubId)).toBe(false)
+    expect(roles.instanceAdmin).toBe(true)
   })
 })
-
-// slug validation runs before the single-club check, so it can be asserted on the existing DB
-async function freshDbTempCheck() {
-  await expect(createClub(outsider, { slug: 'Bad Slug!', name: 'X' }))
-    .rejects.toMatchObject({ statusCode: 400 })
-}
 
 describe('F7 team management - main flow', () => {
   let teamId: string

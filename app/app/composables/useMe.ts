@@ -1,6 +1,7 @@
 interface MeResponse {
   user: { id: string, name: string, email: string, emailVerified: boolean }
   roles: {
+    instanceAdmin: boolean
     adminOfClubIds: string[]
     staffTeamIds: string[]
     pendingStaffTeamIds: string[]

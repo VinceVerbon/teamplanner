@@ -1,13 +1,20 @@
 import { createError } from 'h3'
-import { eq } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 import { getDb } from '../utils/db'
-import { getUserRoles, isClubAdmin } from '../utils/roles'
-import { clubs, clubAdmins } from '../db/schema'
+import { getUserRoles, isClubAdmin, isInstanceAdmin } from '../utils/roles'
+import { clubs, clubAdmins, locations } from '../db/schema'
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/
 
-/** v1: single club. The first authenticated user to create it becomes its admin (bootstrap). */
+/**
+ * F26: creating a club is an instance-level action (one instance can hold multiple
+ * clubs later; v1 still enforces a single club). The creator becomes the club's admin.
+ */
 export async function createClub(userId: string, input: { slug: string, name: string }) {
+  const roles = await getUserRoles(userId)
+  if (!isInstanceAdmin(roles)) {
+    throw createError({ statusCode: 403, statusMessage: 'Instance admin role required' })
+  }
   const slug = input.slug.trim().toLowerCase()
   const name = input.name.trim()
   if (!SLUG_RE.test(slug)) {
@@ -86,6 +93,30 @@ export async function setClubBranding(userId: string, clubId: string, patch: { p
     .returning()
   if (!club) throw createError({ statusCode: 404, statusMessage: 'Club not found' })
   return { primaryColor: club.primaryColor }
+}
+
+/**
+ * F27: set (or clear) the club's main location - its own address/main site. Exactly one;
+ * setting a new one replaces the old. A main location is by definition a club location.
+ */
+export async function setMainLocation(userId: string, clubId: string, locationId: string | null) {
+  const roles = await getUserRoles(userId)
+  if (!isClubAdmin(roles, clubId)) {
+    throw createError({ statusCode: 403, statusMessage: 'Admin role required' })
+  }
+  const db = getDb()
+  if (locationId !== null) {
+    const [loc] = await db.select({ id: locations.id }).from(locations)
+      .where(and(eq(locations.id, locationId), eq(locations.clubId, clubId)))
+    if (!loc) throw createError({ statusCode: 404, statusMessage: 'Location not found in this club' })
+    await db.update(locations).set({ isClubLocation: true }).where(eq(locations.id, locationId))
+  }
+  const [club] = await db.update(clubs)
+    .set({ mainLocationId: locationId })
+    .where(eq(clubs.id, clubId))
+    .returning()
+  if (!club) throw createError({ statusCode: 404, statusMessage: 'Club not found' })
+  return { mainLocationId: club.mainLocationId }
 }
 
 const PASSWORD_POLICIES = ['low', 'medium', 'strong'] as const
