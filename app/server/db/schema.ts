@@ -92,8 +92,16 @@ export const clubs = pgTable('clubs', {
   logoMime: text('logo_mime'),
   primaryColor: text('primary_color'),
   // F24: enforced password strength standard; 'medium' is the default, lowering it is
-  // an explicit admin decision (confirmed in the UI before it activates).
-  passwordPolicy: text('password_policy', { enum: ['low', 'medium', 'strong'] }).notNull().default('medium'),
+  // an explicit admin decision (confirmed in the UI before it activates). 'custom' uses
+  // the passwordCustom* rule columns below.
+  passwordPolicy: text('password_policy', { enum: ['low', 'medium', 'strong', 'custom'] }).notNull().default('medium'),
+  passwordCustomMinLength: integer('password_custom_min_length').notNull().default(8),
+  passwordCustomRequireLowercase: boolean('password_custom_require_lowercase').notNull().default(false),
+  passwordCustomRequireUppercase: boolean('password_custom_require_uppercase').notNull().default(false),
+  passwordCustomRequireDigit: boolean('password_custom_require_digit').notNull().default(false),
+  passwordCustomRequireSymbol: boolean('password_custom_require_symbol').notNull().default(false),
+  // F25: navigation bar placement for the Beheer shell - a theme setting.
+  navPlacement: text('nav_placement', { enum: ['left', 'top', 'right'] }).notNull().default('left'),
   // F27: exactly one main location (the club's own address/main site); by definition
   // a club location. Forward reference: locations is declared below.
   mainLocationId: text('main_location_id').references((): AnyPgColumn => locations.id, { onDelete: 'set null' }),

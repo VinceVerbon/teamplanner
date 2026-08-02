@@ -77,8 +77,13 @@ export async function getClubLogo(clubId: string) {
   return { data: Buffer.from(club.logoData, 'base64'), mime: club.logoMime }
 }
 
-/** F20: set the theme primary color (admin only; hex like #1a7f37). */
-export async function setClubBranding(userId: string, clubId: string, patch: { primaryColor?: string | null }) {
+const NAV_PLACEMENTS = ['left', 'top', 'right'] as const
+export type NavPlacement = typeof NAV_PLACEMENTS[number]
+
+/** F20/F25: theme settings - primary color (hex like #1a7f37) and nav placement. */
+export async function setClubBranding(
+  userId: string, clubId: string, patch: { primaryColor?: string | null, navPlacement?: NavPlacement }
+) {
   const roles = await getUserRoles(userId)
   if (!isClubAdmin(roles, clubId)) {
     throw createError({ statusCode: 403, statusMessage: 'Admin role required' })
@@ -86,13 +91,19 @@ export async function setClubBranding(userId: string, clubId: string, patch: { p
   if (patch.primaryColor != null && !HEX_RE.test(patch.primaryColor)) {
     throw createError({ statusCode: 400, statusMessage: 'primaryColor must be a #rrggbb hex color' })
   }
+  if (patch.navPlacement !== undefined && !NAV_PLACEMENTS.includes(patch.navPlacement)) {
+    throw createError({ statusCode: 400, statusMessage: 'navPlacement must be left, top or right' })
+  }
   const db = getDb()
   const [club] = await db.update(clubs)
-    .set({ primaryColor: patch.primaryColor ?? null })
+    .set({
+      ...('primaryColor' in patch ? { primaryColor: patch.primaryColor ?? null } : {}),
+      ...(patch.navPlacement !== undefined ? { navPlacement: patch.navPlacement } : {})
+    })
     .where(eq(clubs.id, clubId))
     .returning()
   if (!club) throw createError({ statusCode: 404, statusMessage: 'Club not found' })
-  return { primaryColor: club.primaryColor }
+  return { primaryColor: club.primaryColor, navPlacement: club.navPlacement }
 }
 
 /**
@@ -119,14 +130,25 @@ export async function setMainLocation(userId: string, clubId: string, locationId
   return { mainLocationId: club.mainLocationId }
 }
 
-const PASSWORD_POLICIES = ['low', 'medium', 'strong'] as const
+const PASSWORD_POLICIES = ['low', 'medium', 'strong', 'custom'] as const
 export type ClubPasswordPolicy = typeof PASSWORD_POLICIES[number]
+
+export interface CustomPolicyRulesInput {
+  minLength: number
+  requireLowercase: boolean
+  requireUppercase: boolean
+  requireDigit: boolean
+  requireSymbol: boolean
+}
 
 /**
  * F24: set the enforced password standard (admin only). Lowering below 'medium' is an
- * explicit decision - the UI confirms it with the admin before calling this.
+ * explicit decision - the UI confirms it with the admin before calling this. 'custom'
+ * stores explicit rules (min length + required character elements).
  */
-export async function setPasswordPolicy(userId: string, clubId: string, policy: ClubPasswordPolicy) {
+export async function setPasswordPolicy(
+  userId: string, clubId: string, policy: ClubPasswordPolicy, custom?: CustomPolicyRulesInput
+) {
   const roles = await getUserRoles(userId)
   if (!isClubAdmin(roles, clubId)) {
     throw createError({ statusCode: 403, statusMessage: 'Admin role required' })
@@ -134,9 +156,28 @@ export async function setPasswordPolicy(userId: string, clubId: string, policy: 
   if (!PASSWORD_POLICIES.includes(policy)) {
     throw createError({ statusCode: 400, statusMessage: 'Unknown password policy' })
   }
+  if (policy === 'custom') {
+    if (!custom) {
+      throw createError({ statusCode: 400, statusMessage: 'Custom policy requires its rules' })
+    }
+    if (!Number.isInteger(custom.minLength) || custom.minLength < 8 || custom.minLength > 128) {
+      throw createError({ statusCode: 400, statusMessage: 'Custom minimum length must be between 8 and 128' })
+    }
+  }
   const db = getDb()
   const [club] = await db.update(clubs)
-    .set({ passwordPolicy: policy })
+    .set({
+      passwordPolicy: policy,
+      ...(policy === 'custom' && custom
+        ? {
+            passwordCustomMinLength: custom.minLength,
+            passwordCustomRequireLowercase: custom.requireLowercase,
+            passwordCustomRequireUppercase: custom.requireUppercase,
+            passwordCustomRequireDigit: custom.requireDigit,
+            passwordCustomRequireSymbol: custom.requireSymbol
+          }
+        : {})
+    })
     .where(eq(clubs.id, clubId))
     .returning()
   if (!club) throw createError({ statusCode: 404, statusMessage: 'Club not found' })

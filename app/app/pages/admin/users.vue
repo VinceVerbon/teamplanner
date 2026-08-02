@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { passwordStrength, STRENGTH_LABELS, type PasswordPolicy } from '../../../shared/utils/password-strength'
+import {
+  passwordStrength, STRENGTH_LABELS, customWeakerThanMedium,
+  type PasswordPolicySetting, type CustomPasswordRules
+} from '../../../shared/utils/password-strength'
 
 definePageMeta({ middleware: 'auth' })
 
@@ -36,51 +39,99 @@ async function createAccount() {
 }
 
 // F24: enforced password standard; lowering below 'medium' needs explicit confirmation.
+// 'Aangepast' defines explicit rules (min length + required character elements).
 const policyItems = [
-  { label: 'Laag (minimaal 8 tekens)', value: 'low' },
+  { label: 'Laag', value: 'low' },
   { label: 'Middel (standaard)', value: 'medium' },
-  { label: 'Sterk', value: 'strong' }
+  { label: 'Sterk', value: 'strong' },
+  { label: 'Aangepast', value: 'custom' }
 ]
-const passwordPolicy = ref<PasswordPolicy>('medium')
-watchEffect(() => {
-  const p = clubData.value?.club?.passwordPolicy
-  if (p) passwordPolicy.value = p as PasswordPolicy
-})
-const confirmLowPolicy = ref(false)
 
-async function persistPolicy(policy: PasswordPolicy) {
+const POLICY_DESCRIPTIONS: Record<PasswordPolicySetting, string> = {
+  low: 'Geen extra eisen: alleen minimaal 8 tekens. Veelgebruikte wachtwoorden blijven '
+    + 'altijd geblokkeerd. Dit is lager dan de standaard.',
+  medium: 'De standaard. Minimaal 8 tekens EN voldoende sterkte: kortere wachtwoorden '
+    + 'hebben meerdere tekensoorten nodig (hoofdletters, cijfers of leestekens); vanaf '
+    + '12 tekens volstaat minder variatie. Veelgebruikte wachtwoorden geblokkeerd.',
+  strong: 'Hogere eis: sterkte \'sterk\'. In de praktijk: 12+ tekens gecombineerd met '
+    + 'meerdere tekensoorten, of een lange wachtwoordzin (16+ tekens). Veelgebruikte '
+    + 'wachtwoorden geblokkeerd.',
+  custom: 'Eigen regels: stel de minimale lengte in en welke tekensoorten verplicht '
+    + 'zijn. Veelgebruikte wachtwoorden blijven altijd geblokkeerd.'
+}
+
+const storedPolicy = computed<PasswordPolicySetting>(() =>
+  (clubData.value?.club?.passwordPolicy as PasswordPolicySetting) || 'medium')
+const passwordPolicy = ref<PasswordPolicySetting>('medium')
+watchEffect(() => {
+  passwordPolicy.value = storedPolicy.value
+})
+const policyDescription = computed(() => POLICY_DESCRIPTIONS[passwordPolicy.value])
+
+const customRules = reactive<CustomPasswordRules>({
+  minLength: 8, requireLowercase: false, requireUppercase: false, requireDigit: false, requireSymbol: false
+})
+watchEffect(() => {
+  const c = clubData.value?.club
+  if (!c) return
+  customRules.minLength = c.passwordCustomMinLength ?? 8
+  customRules.requireLowercase = !!c.passwordCustomRequireLowercase
+  customRules.requireUppercase = !!c.passwordCustomRequireUppercase
+  customRules.requireDigit = !!c.passwordCustomRequireDigit
+  customRules.requireSymbol = !!c.passwordCustomRequireSymbol
+})
+
+const confirmWeakPolicy = ref(false)
+let pendingSave: { policy: PasswordPolicySetting, custom?: CustomPasswordRules } | null = null
+
+async function persistPolicy(policy: PasswordPolicySetting, custom?: CustomPasswordRules) {
   const clubId = clubData.value?.club?.id
   if (!clubId) return
   try {
-    await $fetch(`/api/clubs/${clubId}/password-policy`, { method: 'PATCH', body: { policy } })
+    await $fetch(`/api/clubs/${clubId}/password-policy`, {
+      method: 'PATCH',
+      body: { policy, ...(custom ? { custom: { ...custom } } : {}) }
+    })
     toast.add({ title: 'Wachtwoordbeleid opgeslagen' })
     await refreshClub()
   } catch (err) {
     toast.add({ title: (err as { statusMessage?: string }).statusMessage || 'Opslaan is niet gelukt', color: 'error' })
-    passwordPolicy.value = (clubData.value?.club?.passwordPolicy as PasswordPolicy) || 'medium'
+    passwordPolicy.value = storedPolicy.value
   }
 }
 
 async function onPolicyChange(value: unknown) {
-  const policy = value as PasswordPolicy
-  const current = (clubData.value?.club?.passwordPolicy as PasswordPolicy) || 'medium'
-  if (policy === current) return
+  const policy = value as PasswordPolicySetting
+  if (policy === 'custom') return // saved explicitly via the rules form
+  if (policy === storedPolicy.value) return
   if (policy === 'low') {
     // Are-you-sure gate before a weaker-than-standard policy activates.
-    confirmLowPolicy.value = true
+    pendingSave = { policy }
+    confirmWeakPolicy.value = true
     return
   }
   await persistPolicy(policy)
 }
 
-async function confirmLowPolicyYes() {
-  confirmLowPolicy.value = false
-  await persistPolicy('low')
+async function saveCustomRules() {
+  if (customWeakerThanMedium({ ...customRules })) {
+    pendingSave = { policy: 'custom', custom: { ...customRules } }
+    confirmWeakPolicy.value = true
+    return
+  }
+  await persistPolicy('custom', { ...customRules })
 }
 
-function confirmLowPolicyCancel() {
-  confirmLowPolicy.value = false
-  passwordPolicy.value = (clubData.value?.club?.passwordPolicy as PasswordPolicy) || 'medium'
+async function confirmWeakYes() {
+  confirmWeakPolicy.value = false
+  if (pendingSave) await persistPolicy(pendingSave.policy, pendingSave.custom)
+  pendingSave = null
+}
+
+function confirmWeakCancel() {
+  confirmWeakPolicy.value = false
+  pendingSave = null
+  passwordPolicy.value = storedPolicy.value
 }
 </script>
 
@@ -161,28 +212,84 @@ function confirmLowPolicyCancel() {
           Wachtwoordbeleid
         </h2>
       </template>
-      <UFormField
-        label="Minimale sterkte"
-        hint="geldt voor alle nieuwe wachtwoorden; standaard is 'Middel'"
-      >
-        <USelect
-          v-model="passwordPolicy"
-          :items="policyItems"
-          :disabled="!isAdmin"
-          class="w-64"
-          @update:model-value="onPolicyChange"
-        />
-      </UFormField>
+      <div class="flex flex-col sm:flex-row gap-6">
+        <div class="sm:w-72 shrink-0 space-y-4">
+          <UFormField
+            label="Beleid"
+            hint="geldt voor alle nieuwe wachtwoorden"
+          >
+            <USelect
+              v-model="passwordPolicy"
+              :items="policyItems"
+              :disabled="!isAdmin"
+              class="w-full"
+              @update:model-value="onPolicyChange"
+            />
+          </UFormField>
+          <template v-if="passwordPolicy === 'custom'">
+            <UFormField label="Minimale lengte">
+              <UInput
+                v-model.number="customRules.minLength"
+                type="number"
+                min="8"
+                max="128"
+                class="w-24"
+                :disabled="!isAdmin"
+              />
+            </UFormField>
+            <UFormField label="Verplichte onderdelen">
+              <div class="space-y-2">
+                <UCheckbox
+                  v-model="customRules.requireLowercase"
+                  label="kleine letter"
+                  :disabled="!isAdmin"
+                />
+                <UCheckbox
+                  v-model="customRules.requireUppercase"
+                  label="hoofdletter"
+                  :disabled="!isAdmin"
+                />
+                <UCheckbox
+                  v-model="customRules.requireDigit"
+                  label="cijfer"
+                  :disabled="!isAdmin"
+                />
+                <UCheckbox
+                  v-model="customRules.requireSymbol"
+                  label="leesteken"
+                  :disabled="!isAdmin"
+                />
+              </div>
+            </UFormField>
+            <UButton
+              label="Regels opslaan"
+              :disabled="!isAdmin"
+              @click="saveCustomRules"
+            />
+          </template>
+        </div>
+        <div class="flex-1 text-sm text-muted border-l border-default pl-6">
+          <p class="font-medium text-highlighted mb-1">
+            {{ policyItems.find(i => i.value === passwordPolicy)?.label }}
+          </p>
+          <p>{{ policyDescription }}</p>
+          <p
+            v-if="passwordPolicy !== storedPolicy && passwordPolicy === 'custom'"
+            class="mt-2 text-warning"
+          >
+            Nog niet actief - sla de regels op om dit beleid in te schakelen.
+          </p>
+        </div>
+      </div>
     </UCard>
 
     <UModal
-      v-model:open="confirmLowPolicy"
+      v-model:open="confirmWeakPolicy"
       title="Weet je het zeker?"
     >
       <template #body>
         <p class="text-sm">
-          Je verlaagt het wachtwoordbeleid tot onder de standaard. Nieuwe wachtwoorden
-          hoeven dan alleen nog minimaal 8 tekens te zijn; zwakke wachtwoorden maken
+          Dit beleid is zwakker dan de standaard ('Middel'). Zwakke wachtwoorden maken
           accounts kwetsbaarder. Weet je zeker dat je dit wilt inschakelen?
         </p>
       </template>
@@ -192,12 +299,12 @@ function confirmLowPolicyCancel() {
             label="Annuleren"
             color="neutral"
             variant="outline"
-            @click="confirmLowPolicyCancel"
+            @click="confirmWeakCancel"
           />
           <UButton
-            label="Ja, verlaag het beleid"
+            label="Ja, gebruik dit beleid"
             color="warning"
-            @click="confirmLowPolicyYes"
+            @click="confirmWeakYes"
           />
         </div>
       </template>

@@ -4,8 +4,8 @@ import { createAuthMiddleware, APIError } from 'better-auth/api'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { getDb } from './db'
 import { sendMail } from './mailer'
-import { getPasswordPolicy } from './password-policy'
-import { meetsPolicy, policyErrorMessage } from '../../shared/utils/password-strength'
+import { getPasswordPolicySpec } from './password-policy'
+import { evaluatePassword } from '../../shared/utils/password-strength'
 import * as schema from '../db/schema'
 
 // F24: every better-auth path that sets a password goes through the policy gate.
@@ -78,9 +78,11 @@ export const auth = betterAuth({
       const body = ctx.body as { password?: string, newPassword?: string } | undefined
       const password = body?.newPassword ?? body?.password
       if (typeof password !== 'string') return
-      const check = meetsPolicy(password, await getPasswordPolicy())
-      if (!check.ok) {
-        throw new APIError('BAD_REQUEST', { message: policyErrorMessage(check) })
+      const result = evaluatePassword(password, await getPasswordPolicySpec())
+      if (!result.ok) {
+        throw new APIError('BAD_REQUEST', {
+          message: `Wachtwoord voldoet niet aan het beleid: ${result.failures.join(', ')}`
+        })
       }
     })
   },

@@ -57,6 +57,13 @@
       "when": 1785707769523,
       "tag": "0007_medical_the_liberteens",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1785708882402,
+      "tag": "0008_third_angel",
+      "breakpoints": true
     }
   ]
 }

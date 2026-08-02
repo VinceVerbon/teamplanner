@@ -73,3 +73,63 @@ export function policyErrorMessage(check: PolicyCheck): string {
     + `'${STRENGTH_LABELS[check.required]}'. Gebruik minimaal ${MIN_PASSWORD_LENGTH} tekens; `
     + `langer en met hoofdletters, cijfers of leestekens is sterker.`
 }
+
+// --- 'aangepast' (custom) policy: explicit rules instead of the scored levels ---
+
+export interface CustomPasswordRules {
+  minLength: number
+  requireLowercase: boolean
+  requireUppercase: boolean
+  requireDigit: boolean
+  requireSymbol: boolean
+}
+
+/** The stored club setting: a scored level or 'custom'. */
+export type PasswordPolicySetting = PasswordPolicy | 'custom'
+
+export type PasswordPolicySpec
+  = { level: PasswordPolicy }
+    | { level: 'custom', rules: CustomPasswordRules }
+
+export interface PasswordCheckResult {
+  ok: boolean
+  /** Dutch, ready for display; empty when ok. */
+  failures: string[]
+}
+
+/** Common passwords stay blocked under every policy, custom included. */
+export function checkCustomRules(password: string, rules: CustomPasswordRules): PasswordCheckResult {
+  const failures: string[] = []
+  if (password.length < rules.minLength) failures.push(`minimaal ${rules.minLength} tekens`)
+  if (COMMON_PASSWORDS.has(password.toLowerCase())) failures.push('geen veelgebruikt wachtwoord')
+  if (rules.requireLowercase && !/[a-z]/.test(password)) failures.push('minimaal een kleine letter')
+  if (rules.requireUppercase && !/[A-Z]/.test(password)) failures.push('minimaal een hoofdletter')
+  if (rules.requireDigit && !/[0-9]/.test(password)) failures.push('minimaal een cijfer')
+  if (rules.requireSymbol && !/[^a-zA-Z0-9]/.test(password)) failures.push('minimaal een leesteken')
+  return { ok: failures.length === 0, failures }
+}
+
+/** One evaluator for every policy shape (levels and custom). */
+export function evaluatePassword(password: string, spec: PasswordPolicySpec): PasswordCheckResult {
+  if (spec.level === 'custom') return checkCustomRules(password, spec.rules)
+  const check = meetsPolicy(password, spec.level)
+  return { ok: check.ok, failures: check.ok ? [] : [policyErrorMessage(check)] }
+}
+
+/**
+ * Heuristic for the are-you-sure dialog: build the weakest password the custom rules
+ * still accept and score it - if that scores below 'medium', the custom policy is
+ * weaker than the standard.
+ */
+export function customWeakerThanMedium(rules: CustomPasswordRules): boolean {
+  let sample = ''
+  if (rules.requireLowercase) sample += 'x'
+  if (rules.requireUppercase) sample += 'X'
+  if (rules.requireDigit) sample += '7'
+  if (rules.requireSymbol) sample += '!'
+  // Vary the filler: an all-same-character sample would trip the repeated-char block
+  // and make every rule set look weak.
+  const filler = 'abcdefghijklmnopqrstuvwxyz'
+  for (let i = 0; sample.length < rules.minLength; i++) sample += filler[i % filler.length]
+  return passwordStrength(sample) < POLICY_MIN_STRENGTH.medium
+}

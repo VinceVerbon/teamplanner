@@ -23,8 +23,8 @@ beforeAll(async () => {
 
 describe('F24 default policy (medium) - enforcement per path', () => {
   it('applies before any club exists: default is medium', async () => {
-    const { getPasswordPolicy } = await import('../server/utils/password-policy')
-    expect(await getPasswordPolicy()).toBe('medium')
+    const { getPasswordPolicySpec } = await import('../server/utils/password-policy')
+    expect(await getPasswordPolicySpec()).toEqual({ level: 'medium' })
   })
 
   it('rejects a weak password at signup', async () => {
@@ -117,5 +117,36 @@ describe('F24 club-configurable policy', () => {
       body: { email: 'sterk@example.com', password: 'Heel-Sterk-Wachtwoord-2026!', name: 'Sterk' }
     })
     expect(res.user.email).toBe('sterk@example.com')
+  })
+
+  it('custom policy enforces exactly the configured rules (aangepast)', async () => {
+    const { setPasswordPolicy } = await import('../server/services/clubs')
+    await setPasswordPolicy(adminId, clubId, 'custom', {
+      minLength: 12, requireLowercase: true, requireUppercase: false,
+      requireDigit: true, requireSymbol: false
+    })
+    // Meets medium but not the custom rules (no digit).
+    await expect(auth.api.signUpEmail({
+      body: { email: 'geencijfer@example.com', password: 'Geen-Cijfers-Hier', name: 'Geen Cijfer' }
+    })).rejects.toThrow()
+    // Too short for the custom minimum.
+    await expect(auth.api.signUpEmail({
+      body: { email: 'tekort@example.com', password: 'kort12maar', name: 'Te Kort' }
+    })).rejects.toThrow()
+    // Exactly what the rules ask for is accepted.
+    const res = await auth.api.signUpEmail({
+      body: { email: 'maat@example.com', password: 'preciesgoed12', name: 'Op Maat' }
+    })
+    expect(res.user.email).toBe('maat@example.com')
+  })
+
+  it('custom policy requires rules and a sane minimum length (edge)', async () => {
+    const { setPasswordPolicy } = await import('../server/services/clubs')
+    await expect(setPasswordPolicy(adminId, clubId, 'custom'))
+      .rejects.toMatchObject({ statusCode: 400 })
+    await expect(setPasswordPolicy(adminId, clubId, 'custom', {
+      minLength: 4, requireLowercase: false, requireUppercase: false,
+      requireDigit: false, requireSymbol: false
+    })).rejects.toMatchObject({ statusCode: 400 })
   })
 })

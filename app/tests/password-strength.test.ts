@@ -2,7 +2,8 @@
 // meter and the server-side enforcement, so its behaviour is pinned down here.
 import { describe, it, expect } from 'vitest'
 import {
-  passwordStrength, meetsPolicy, POLICY_MIN_STRENGTH, MIN_PASSWORD_LENGTH
+  passwordStrength, meetsPolicy, POLICY_MIN_STRENGTH, MIN_PASSWORD_LENGTH,
+  checkCustomRules, evaluatePassword, customWeakerThanMedium, type CustomPasswordRules
 } from '../shared/utils/password-strength'
 
 describe('passwordStrength - blocked (0)', () => {
@@ -73,5 +74,52 @@ describe('meetsPolicy', () => {
   it('policy thresholds are ordered low < medium < strong (edge)', () => {
     expect(POLICY_MIN_STRENGTH.low).toBeLessThan(POLICY_MIN_STRENGTH.medium)
     expect(POLICY_MIN_STRENGTH.medium).toBeLessThan(POLICY_MIN_STRENGTH.strong)
+  })
+})
+
+const rules = (over: Partial<CustomPasswordRules> = {}): CustomPasswordRules => ({
+  minLength: 8, requireLowercase: false, requireUppercase: false,
+  requireDigit: false, requireSymbol: false, ...over
+})
+
+describe('custom rules (aangepast)', () => {
+  it('enforces the minimum length', () => {
+    expect(checkCustomRules('kortkort', rules({ minLength: 10 })).ok).toBe(false)
+    expect(checkCustomRules('langgenoeg', rules({ minLength: 10 })).ok).toBe(true)
+  })
+
+  it('enforces each required character element independently', () => {
+    const all = rules({ requireLowercase: true, requireUppercase: true, requireDigit: true, requireSymbol: true })
+    const result = checkCustomRules('alleenkleineletters', all)
+    expect(result.ok).toBe(false)
+    expect(result.failures).toHaveLength(3) // missing upper, digit, symbol
+    expect(checkCustomRules('Voldoet-Aan-Alles-8', all).ok).toBe(true)
+  })
+
+  it('common passwords stay blocked even under permissive custom rules (edge)', () => {
+    expect(checkCustomRules('password1', rules()).ok).toBe(false)
+  })
+
+  it('evaluatePassword routes levels and custom through one API', () => {
+    expect(evaluatePassword('abcdefgh', { level: 'medium' }).ok).toBe(false)
+    expect(evaluatePassword('abcdefgh', { level: 'custom', rules: rules() }).ok).toBe(true)
+    expect(evaluatePassword('abc', { level: 'custom', rules: rules() }).failures.length).toBeGreaterThan(0)
+  })
+})
+
+describe('customWeakerThanMedium (drives the are-you-sure dialog)', () => {
+  it('bare 8-char rules are weaker than the standard', () => {
+    expect(customWeakerThanMedium(rules())).toBe(true)
+  })
+
+  it('8 chars with three required elements matches the standard', () => {
+    expect(customWeakerThanMedium(rules({
+      requireLowercase: true, requireUppercase: true, requireDigit: true
+    }))).toBe(false)
+  })
+
+  it('a long minimum length alone matches the standard (edge)', () => {
+    expect(customWeakerThanMedium(rules({ minLength: 12 }))).toBe(false)
+    expect(customWeakerThanMedium(rules({ minLength: 10 }))).toBe(true)
   })
 })

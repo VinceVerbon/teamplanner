@@ -69,6 +69,34 @@ async function saveBrandColor() {
     toast.add({ title: (err as { statusMessage?: string }).statusMessage || 'Opslaan is niet gelukt', color: 'error' })
   }
 }
+
+// F25: navigation bar placement (theme setting; left is the default).
+const navPlacements = [
+  { label: 'Links (standaard)', value: 'left' },
+  { label: 'Bovenbalk', value: 'top' },
+  { label: 'Rechts', value: 'right' }
+]
+const navPlacement = ref<'left' | 'top' | 'right'>('left')
+watchEffect(() => {
+  const p = clubData.value?.club?.navPlacement
+  if (p) navPlacement.value = p as 'left' | 'top' | 'right'
+})
+
+async function saveNavPlacement(value: unknown) {
+  const clubId = clubData.value?.club?.id
+  if (!clubId) return
+  try {
+    await $fetch(`/api/clubs/${clubId}/branding`, {
+      method: 'PATCH',
+      body: { navPlacement: value as string }
+    })
+    toast.add({ title: 'Navigatie-instelling opgeslagen' })
+    await refreshClub()
+  } catch (err) {
+    toast.add({ title: (err as { statusMessage?: string }).statusMessage || 'Opslaan is niet gelukt', color: 'error' })
+    navPlacement.value = (clubData.value?.club?.navPlacement as 'left' | 'top' | 'right') || 'left'
+  }
+}
 </script>
 
 <template>
@@ -146,6 +174,18 @@ async function saveBrandColor() {
                 @click="saveBrandColor"
               />
             </div>
+          </UFormField>
+          <UFormField
+            label="Navigatiebalk"
+            hint="plaats van het beheermenu"
+          >
+            <USelect
+              v-model="navPlacement"
+              :items="navPlacements"
+              :disabled="!isAdmin"
+              class="w-64"
+              @update:model-value="saveNavPlacement"
+            />
           </UFormField>
         </div>
       </UCard>

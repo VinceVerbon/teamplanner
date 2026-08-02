@@ -96,3 +96,22 @@ describe('F20 theme color', () => {
     expect(cleared.primaryColor).toBeNull()
   })
 })
+
+describe('F25 nav placement (theme setting)', () => {
+  it('defaults to left and only accepts left/top/right', async () => {
+    expect((await getCurrentClub())!.navPlacement).toBe('left')
+    const res = await setClubBranding(admin, clubId, { navPlacement: 'top' })
+    expect(res.navPlacement).toBe('top')
+    expect((await getCurrentClub())!.navPlacement).toBe('top')
+    await expect(setClubBranding(admin, clubId, { navPlacement: 'bottom' as never }))
+      .rejects.toMatchObject({ statusCode: 400 })
+    await expect(setClubBranding(member, clubId, { navPlacement: 'left' }))
+      .rejects.toMatchObject({ statusCode: 403 })
+  })
+
+  it('setting nav placement alone leaves the color untouched (edge)', async () => {
+    await setClubBranding(admin, clubId, { primaryColor: '#112233' })
+    await setClubBranding(admin, clubId, { navPlacement: 'left' })
+    expect((await getCurrentClub())!.primaryColor).toBe('#112233')
+  })
+})
