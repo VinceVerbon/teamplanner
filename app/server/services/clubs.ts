@@ -88,6 +88,30 @@ export async function setClubBranding(userId: string, clubId: string, patch: { p
   return { primaryColor: club.primaryColor }
 }
 
+const PASSWORD_POLICIES = ['low', 'medium', 'strong'] as const
+export type ClubPasswordPolicy = typeof PASSWORD_POLICIES[number]
+
+/**
+ * F24: set the enforced password standard (admin only). Lowering below 'medium' is an
+ * explicit decision - the UI confirms it with the admin before calling this.
+ */
+export async function setPasswordPolicy(userId: string, clubId: string, policy: ClubPasswordPolicy) {
+  const roles = await getUserRoles(userId)
+  if (!isClubAdmin(roles, clubId)) {
+    throw createError({ statusCode: 403, statusMessage: 'Admin role required' })
+  }
+  if (!PASSWORD_POLICIES.includes(policy)) {
+    throw createError({ statusCode: 400, statusMessage: 'Unknown password policy' })
+  }
+  const db = getDb()
+  const [club] = await db.update(clubs)
+    .set({ passwordPolicy: policy })
+    .where(eq(clubs.id, clubId))
+    .returning()
+  if (!club) throw createError({ statusCode: 404, statusMessage: 'Club not found' })
+  return { passwordPolicy: club.passwordPolicy }
+}
+
 export async function updateClub(userId: string, clubId: string, patch: { name?: string }) {
   const roles = await getUserRoles(userId)
   if (!isClubAdmin(roles, clubId)) {

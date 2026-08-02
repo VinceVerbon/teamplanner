@@ -7,6 +7,12 @@ interface MeResponse {
     playerTeamId: string | null
     parentOfUserIds: string[]
   }
+  settings?: {
+    dateOfBirth: string | null
+    selfManageOptIn: boolean
+    parentManageOptIn: boolean
+    mustSetPassword: boolean
+  }
 }
 
 /** Session user + roles from /api/me; null while logged out. Shared app-wide. */

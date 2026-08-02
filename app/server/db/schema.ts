@@ -16,6 +16,11 @@ export const user = pgTable('user', {
   selfManageOptIn: boolean('self_manage_opt_in').notNull().default(false),
   // F5 18+ setting "mijn ouder mag mijn aanwezigheid beheren" (owned by the player).
   parentManageOptIn: boolean('parent_manage_opt_in').notNull().default(false),
+  // F22/F23: account may not use the app until a (new) password is set - enforced in
+  // requireUser, cleared by the set/change-password flows.
+  mustSetPassword: boolean('must_set_password').notNull().default(false),
+  // F22: the seeded first-run admin; admin of the (single) club without a club_admins row.
+  isBootstrapAdmin: boolean('is_bootstrap_admin').notNull().default(false),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow()
 })
@@ -67,6 +72,9 @@ export const clubs = pgTable('clubs', {
   logoData: text('logo_data'),
   logoMime: text('logo_mime'),
   primaryColor: text('primary_color'),
+  // F24: enforced password strength standard; 'medium' is the default, lowering it is
+  // an explicit admin decision (confirmed in the UI before it activates).
+  passwordPolicy: text('password_policy', { enum: ['low', 'medium', 'strong'] }).notNull().default('medium'),
   createdAt: timestamp('created_at').notNull().defaultNow()
 })
 

@@ -1,6 +1,6 @@
 import { eq, and } from 'drizzle-orm'
 import { getDb } from './db'
-import { clubAdmins, staffAssignments, playerRegistrations, parentLinks } from '../db/schema'
+import { user, clubs, clubAdmins, staffAssignments, playerRegistrations, parentLinks } from '../db/schema'
 
 export interface UserRoles {
   adminOfClubIds: string[]
@@ -15,7 +15,7 @@ export interface UserRoles {
 
 export async function getUserRoles(userId: string): Promise<UserRoles> {
   const db = getDb()
-  const [admins, staff, player, parents] = await Promise.all([
+  const [admins, staff, player, parents, [self]] = await Promise.all([
     db.select({ clubId: clubAdmins.clubId }).from(clubAdmins).where(eq(clubAdmins.userId, userId)),
     db.select({ teamId: staffAssignments.teamId, status: staffAssignments.status })
       .from(staffAssignments).where(eq(staffAssignments.userId, userId)),
@@ -23,10 +23,18 @@ export async function getUserRoles(userId: string): Promise<UserRoles> {
       .from(playerRegistrations).where(eq(playerRegistrations.userId, userId)),
     db.select({ playerUserId: parentLinks.playerUserId })
       .from(parentLinks)
-      .where(and(eq(parentLinks.parentUserId, userId), eq(parentLinks.status, 'active')))
+      .where(and(eq(parentLinks.parentUserId, userId), eq(parentLinks.status, 'active'))),
+    db.select({ isBootstrapAdmin: user.isBootstrapAdmin }).from(user).where(eq(user.id, userId))
   ])
+  let adminClubIds = admins.map(a => a.clubId)
+  // F22: the seeded bootstrap admin administers every club of this deployment (v1: the
+  // single club) without needing club_admins rows.
+  if (self?.isBootstrapAdmin) {
+    const allClubs = await db.select({ id: clubs.id }).from(clubs)
+    adminClubIds = [...new Set([...adminClubIds, ...allClubs.map(c => c.id)])]
+  }
   return {
-    adminOfClubIds: admins.map(a => a.clubId),
+    adminOfClubIds: adminClubIds,
     staffTeamIds: staff.filter(s => s.status === 'active').map(s => s.teamId),
     pendingStaffTeamIds: staff.filter(s => s.status === 'pending').map(s => s.teamId),
     playerTeamId: player[0]?.teamId ?? null,

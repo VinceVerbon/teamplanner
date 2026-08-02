@@ -1,9 +1,15 @@
 import { betterAuth } from 'better-auth'
 import { bearer } from 'better-auth/plugins'
+import { createAuthMiddleware, APIError } from 'better-auth/api'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { getDb } from './db'
 import { sendMail } from './mailer'
+import { getPasswordPolicy } from './password-policy'
+import { meetsPolicy, policyErrorMessage } from '../../shared/utils/password-strength'
 import * as schema from '../db/schema'
+
+// F24: every better-auth path that sets a password goes through the policy gate.
+const PASSWORD_SETTING_PATHS = ['/sign-up/email', '/reset-password', '/change-password']
 
 function socialProviders() {
   const clientId = process.env.GOOGLE_CLIENT_ID
@@ -52,8 +58,31 @@ export const auth = betterAuth({
         type: 'date',
         required: false,
         input: true
+      },
+      // Server-managed flags (F22/F23): never settable from a signup/update body.
+      mustSetPassword: {
+        type: 'boolean',
+        required: false,
+        input: false
+      },
+      isBootstrapAdmin: {
+        type: 'boolean',
+        required: false,
+        input: false
       }
     }
+  },
+  hooks: {
+    before: createAuthMiddleware(async (ctx) => {
+      if (!PASSWORD_SETTING_PATHS.some(p => ctx.path === p || ctx.path.startsWith(`${p}/`))) return
+      const body = ctx.body as { password?: string, newPassword?: string } | undefined
+      const password = body?.newPassword ?? body?.password
+      if (typeof password !== 'string') return
+      const check = meetsPolicy(password, await getPasswordPolicy())
+      if (!check.ok) {
+        throw new APIError('BAD_REQUEST', { message: policyErrorMessage(check) })
+      }
+    })
   },
   socialProviders: socialProviders(),
   plugins: [bearer()]

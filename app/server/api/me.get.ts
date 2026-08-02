@@ -14,7 +14,8 @@ export default defineEventHandler(async (event) => {
     .select({
       dateOfBirth: user.dateOfBirth,
       selfManageOptIn: user.selfManageOptIn,
-      parentManageOptIn: user.parentManageOptIn
+      parentManageOptIn: user.parentManageOptIn,
+      mustSetPassword: user.mustSetPassword
     })
     .from(user).where(eq(user.id, session.user.id))
   return {
@@ -23,7 +24,8 @@ export default defineEventHandler(async (event) => {
     settings: {
       dateOfBirth: row?.dateOfBirth ?? null,
       selfManageOptIn: row?.selfManageOptIn ?? false,
-      parentManageOptIn: row?.parentManageOptIn ?? false
+      parentManageOptIn: row?.parentManageOptIn ?? false,
+      mustSetPassword: row?.mustSetPassword ?? false
     }
   }
 })
