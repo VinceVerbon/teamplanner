@@ -184,7 +184,15 @@ export async function setPasswordPolicy(
   return { passwordPolicy: club.passwordPolicy }
 }
 
-export async function updateClub(userId: string, clubId: string, patch: { name?: string }) {
+const CLUB_REGIONS = ['noord', 'oost', 'west', 'zuid'] as const
+export type ClubRegion = typeof CLUB_REGIONS[number]
+
+export async function updateClub(userId: string, clubId: string, patch: {
+  name?: string
+  // F28: a club always plays in a region; the flag offers the nationale kalender at team level.
+  region?: ClubRegion | null
+  hasNationalTeams?: boolean
+}) {
   const roles = await getUserRoles(userId)
   if (!isClubAdmin(roles, clubId)) {
     throw createError({ statusCode: 403, statusMessage: 'Admin role required' })
@@ -193,9 +201,16 @@ export async function updateClub(userId: string, clubId: string, patch: { name?:
   if (name !== undefined && name.length < 2) {
     throw createError({ statusCode: 400, statusMessage: 'Club name too short' })
   }
+  if (patch.region != null && !CLUB_REGIONS.includes(patch.region)) {
+    throw createError({ statusCode: 400, statusMessage: 'Unknown region' })
+  }
   const db = getDb()
   const [club] = await db.update(clubs)
-    .set({ ...(name !== undefined ? { name } : {}) })
+    .set({
+      ...(name !== undefined ? { name } : {}),
+      ...('region' in patch ? { region: patch.region ?? null } : {}),
+      ...(patch.hasNationalTeams !== undefined ? { hasNationalTeams: patch.hasNationalTeams } : {})
+    })
     .where(eq(clubs.id, clubId))
     .returning()
   if (!club) throw createError({ statusCode: 404, statusMessage: 'Club not found' })

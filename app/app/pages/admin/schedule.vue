@@ -39,6 +39,21 @@ const addClosure = () => act(async () => {
 
 const removeClosure = (id: string) => act(() =>
   $fetch(`/api/no-training-periods/${id}`, { method: 'DELETE' }), 'Sluitingsperiode verwijderd', refreshPeriods)
+
+// F28: central changelog of processed speeldagenkalender changes - visible to all
+// clubs and staff by design.
+interface KalenderChangeRow {
+  id: string
+  season: string
+  region: string
+  kind: string
+  description: string
+  changedAt: string
+}
+const { data: kalenderChanges } = await useFetch<KalenderChangeRow[]>('/api/speeldagen-changes')
+function fmtStamp(ts: string): string {
+  return new Date(ts).toLocaleString('nl-NL')
+}
 </script>
 
 <template>
@@ -158,6 +173,36 @@ const removeClosure = (id: string) => act(() =>
               class="py-2 text-muted text-sm"
             >
               Geen sluitingsperiodes.
+            </li>
+          </ul>
+        </div>
+      </UCard>
+
+      <UCard>
+        <template #header>
+          <h2 class="font-semibold">
+            KNVB speeldagenkalender - wijzigingenlogboek
+          </h2>
+        </template>
+        <div class="space-y-4">
+          <p class="text-sm text-muted">
+            Centraal logboek van verwerkte wijzigingen in de KNVB speeldagenkalenders,
+            zichtbaar voor alle clubs en stafleden.
+          </p>
+          <ul class="divide-y divide-default text-sm max-h-96 overflow-y-auto">
+            <li
+              v-for="c in kalenderChanges || []"
+              :key="c.id"
+              class="py-2"
+            >
+              <span class="text-muted">{{ fmtStamp(c.changedAt) }} - {{ c.region }} {{ c.season }}:</span>
+              {{ c.description }}
+            </li>
+            <li
+              v-if="!kalenderChanges?.length"
+              class="py-2 text-muted"
+            >
+              Nog geen verwerkte wijzigingen.
             </li>
           </ul>
         </div>

@@ -7,7 +7,7 @@ import { instanceAdmins, instanceSettings, user } from '../db/schema'
 // F26: instance-level management - the deployment is not the club. Settings here are
 // system-wide (formats, week numbering); club settings live on the club record.
 
-async function requireInstanceAdmin(userId: string) {
+export async function requireInstanceAdmin(userId: string) {
   const roles = await getUserRoles(userId)
   if (!isInstanceAdmin(roles)) {
     throw createError({ statusCode: 403, statusMessage: 'Instance admin role required' })

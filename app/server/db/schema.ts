@@ -105,6 +105,10 @@ export const clubs = pgTable('clubs', {
   // F27: exactly one main location (the club's own address/main site); by definition
   // a club location. Forward reference: locations is declared below.
   mainLocationId: text('main_location_id').references((): AnyPgColumn => locations.id, { onDelete: 'set null' }),
+  // F28: a club always plays in a KNVB region; the flag additionally offers the
+  // nationale kalender as an option at team level.
+  region: text('region', { enum: ['noord', 'oost', 'west', 'zuid'] }),
+  hasNationalTeams: boolean('has_national_teams').notNull().default(false),
   createdAt: timestamp('created_at').notNull().defaultNow()
 })
 
@@ -113,6 +117,9 @@ export const teams = pgTable('teams', {
   clubId: text('club_id').notNull().references(() => clubs.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   archived: boolean('archived').notNull().default(false),
+  // F28: the team's speeldagenkalender category = a column of the kalender selected by
+  // club region (or the nationale kalender when the club flags national teams).
+  kalenderColumnId: text('kalender_column_id').references((): AnyPgColumn => speeldagKalenderColumns.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').notNull().defaultNow()
 })
 
@@ -238,6 +245,58 @@ export const absences = pgTable('absences', {
   reportedAt: timestamp('reported_at').notNull().defaultNow(),
   createdAt: timestamp('created_at').notNull().defaultNow()
 }, t => [uniqueIndex('absences_session_player_uq').on(t.sessionId, t.playerUserId)])
+
+// --- F28: KNVB speeldagenkalenders - INSTANCE level (fetched/parsed centrally, no
+// club_id). One kalender per (season, region, status); columns are the categories the
+// PDF carries horizontally; days are the speeldag rows; cells hold the matrix values.
+// Lifecycle: 'pending' after fetch -> 'active' after the admin activates/processes.
+
+export const speeldagKalenders = pgTable('speeldag_kalenders', {
+  id: id(),
+  season: text('season').notNull(),
+  region: text('region', { enum: ['landelijk', 'landelijk-jeugd', 'noord', 'oost', 'west', 'zuid'] }).notNull(),
+  status: text('status', { enum: ['pending', 'active'] }).notNull().default('pending'),
+  title: text('title').notNull(),
+  sourceUrl: text('source_url').notNull(),
+  fetchedAt: timestamp('fetched_at').notNull().defaultNow()
+}, t => [uniqueIndex('speeldag_kalenders_season_region_status_uq').on(t.season, t.region, t.status)])
+
+export const speeldagKalenderColumns = pgTable('speeldag_kalender_columns', {
+  id: id(),
+  kalenderId: text('kalender_id').notNull().references(() => speeldagKalenders.id, { onDelete: 'cascade' }),
+  position: integer('position').notNull(),
+  title: text('title').notNull()
+})
+
+export const speeldagKalenderDays = pgTable('speeldag_kalender_days', {
+  id: id(),
+  kalenderId: text('kalender_id').notNull().references(() => speeldagKalenders.id, { onDelete: 'cascade' }),
+  position: integer('position').notNull(),
+  label: text('label').notNull(),
+  dateStart: date('date_start').notNull(),
+  dateEnd: date('date_end'),
+  remark: text('remark')
+})
+
+export const speeldagKalenderCells = pgTable('speeldag_kalender_cells', {
+  id: id(),
+  kalenderId: text('kalender_id').notNull().references(() => speeldagKalenders.id, { onDelete: 'cascade' }),
+  dayId: text('day_id').notNull().references(() => speeldagKalenderDays.id, { onDelete: 'cascade' }),
+  columnId: text('column_id').notNull().references(() => speeldagKalenderColumns.id, { onDelete: 'cascade' }),
+  value: text('value').notNull()
+}, t => [uniqueIndex('speeldag_cells_day_column_uq').on(t.dayId, t.columnId)])
+
+// Central changelog of PROCESSED kalender changes - visible to all clubs and staff.
+// No FK to the kalender: entries survive replacements and force reloads.
+export const speeldagKalenderChanges = pgTable('speeldag_kalender_changes', {
+  id: id(),
+  batchId: text('batch_id').notNull(),
+  season: text('season').notNull(),
+  region: text('region').notNull(),
+  kind: text('kind').notNull(),
+  description: text('description').notNull(),
+  changedAt: timestamp('changed_at').notNull().defaultNow()
+})
 
 // Link becomes 'active' only after the other party confirms by email (F5).
 // Works in both directions: requestedBy records which side initiated; the OTHER side

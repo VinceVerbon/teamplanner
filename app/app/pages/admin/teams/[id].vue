@@ -52,6 +52,40 @@ const verifyStaff = (assignmentId: string) => run(() =>
 const removeStaff = (assignmentId: string) => run(() =>
   $fetch(`/api/staff/${assignmentId}`, { method: 'DELETE' }), 'Stafrol verwijderd')
 
+// --- F28: speeldagenkalender category for this team ---
+interface KalenderOption { columnId: string, region: string, season: string, title: string }
+interface KalenderOptionsResponse {
+  clubRegion: string | null
+  options: KalenderOption[]
+  selected?: string | null
+}
+const { data: kalenderOptions, refresh: refreshKalenderOptions }
+  = await useFetch<KalenderOptionsResponse>(`/api/teams/${teamId}/kalender-options`)
+
+const KALENDER_REGION_LABELS: Record<string, string> = {
+  'landelijk': 'Landelijk', 'landelijk-jeugd': 'Landelijk jeugd',
+  'noord': 'Noord', 'oost': 'Oost', 'west': 'West', 'zuid': 'Zuid'
+}
+const kalenderItems = computed(() => [
+  { label: 'Geen kalender', value: '' },
+  ...(kalenderOptions.value?.options || []).map(o => ({
+    label: `${KALENDER_REGION_LABELS[o.region] || o.region} - ${o.title}`,
+    value: o.columnId
+  }))
+])
+const selectedKalenderColumn = ref('')
+watchEffect(() => {
+  selectedKalenderColumn.value = kalenderOptions.value?.selected || ''
+})
+
+const saveTeamKalender = () => run(async () => {
+  await $fetch(`/api/teams/${teamId}/kalender`, {
+    method: 'PATCH',
+    body: { columnId: selectedKalenderColumn.value || null }
+  })
+  await refreshKalenderOptions()
+}, 'Speeldagenkalender opgeslagen')
+
 // --- F10 trainings ---
 const canManage = computed(() => isAdmin.value || isStaff.value)
 const { data: slots, refresh: refreshSlots } = await useFetch(`/api/teams/${teamId}/slots`)
@@ -249,6 +283,50 @@ const removeAbsence = (absenceId: string) => run(async () => {
           icon="i-lucide-arrow-left"
         />
       </div>
+
+      <UCard>
+        <template #header>
+          <h2 class="font-semibold">
+            Speeldagenkalender
+          </h2>
+        </template>
+        <div class="space-y-4">
+          <UAlert
+            v-if="!kalenderOptions?.clubRegion"
+            color="warning"
+            variant="subtle"
+            title="Stel eerst de KNVB-regio van de club in (Beheer > Club) om een kalender te kunnen kiezen."
+          />
+          <template v-else>
+            <p class="text-sm text-muted">
+              De categorie bepaalt welke kolom van de KNVB speeldagenkalender
+              ({{ KALENDER_REGION_LABELS[kalenderOptions.clubRegion] || kalenderOptions.clubRegion }}
+              of landelijk) voor dit team geldt.
+            </p>
+            <div class="flex gap-2 items-center">
+              <USelect
+                v-model="selectedKalenderColumn"
+                :items="kalenderItems"
+                :disabled="!isAdmin"
+                class="w-full max-w-xl"
+              />
+              <UButton
+                label="Opslaan"
+                :disabled="!isAdmin"
+                :loading="busy"
+                @click="saveTeamKalender"
+              />
+            </div>
+            <p
+              v-if="!kalenderOptions.options.length"
+              class="text-sm text-muted"
+            >
+              Er zijn nog geen actieve kalenders - een systeembeheerder haalt ze op via
+              Beheer &gt; Systeem.
+            </p>
+          </template>
+        </div>
+      </UCard>
 
       <UCard>
         <template #header>

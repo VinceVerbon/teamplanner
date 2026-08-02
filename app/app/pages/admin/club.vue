@@ -38,6 +38,37 @@ async function saveClub() {
     savingClub.value = false
   }
 }
+
+// F28: the club always plays in a KNVB region; the flag offers the nationale kalender
+// as an option at team level.
+const regionItems = [
+  { label: 'Noord', value: 'noord' },
+  { label: 'Oost', value: 'oost' },
+  { label: 'West', value: 'west' },
+  { label: 'Zuid', value: 'zuid' }
+]
+const clubRegion = ref<string | undefined>(undefined)
+const hasNationalTeams = ref(false)
+watchEffect(() => {
+  const c = clubData.value?.club
+  if (!c) return
+  clubRegion.value = c.region ?? undefined
+  hasNationalTeams.value = !!c.hasNationalTeams
+})
+
+async function saveRegionSettings() {
+  if (!clubData.value?.club) return
+  try {
+    await $fetch(`/api/clubs/${clubData.value.club.id}`, {
+      method: 'PATCH',
+      body: { region: clubRegion.value ?? null, hasNationalTeams: hasNationalTeams.value }
+    })
+    toast.add({ title: 'Regio-instellingen opgeslagen' })
+    await refreshClub()
+  } catch (e) {
+    toast.add({ title: (e as { statusMessage?: string }).statusMessage || 'Opslaan is niet gelukt', color: 'error' })
+  }
+}
 </script>
 
 <template>
@@ -120,6 +151,28 @@ async function saveClub() {
               class="text-primary"
             >Locaties</NuxtLink> door een locatie als hoofdlocatie te markeren.
           </p>
+          <UFormField
+            label="KNVB-regio"
+            hint="bepaalt welke speeldagenkalender voor de teams geldt"
+          >
+            <USelect
+              v-model="clubRegion"
+              :items="regionItems"
+              placeholder="Kies regio"
+              :disabled="!isAdmin"
+              class="w-64"
+            />
+          </UFormField>
+          <UCheckbox
+            v-model="hasNationalTeams"
+            label="Landelijk spelende teams aanwezig (biedt de nationale kalender aan op teamniveau)"
+            :disabled="!isAdmin"
+          />
+          <UButton
+            label="Regio-instellingen opslaan"
+            :disabled="!isAdmin"
+            @click="saveRegionSettings"
+          />
         </div>
       </UCard>
     </template>
