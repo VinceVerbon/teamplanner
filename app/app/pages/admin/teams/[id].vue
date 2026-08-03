@@ -52,6 +52,38 @@ const verifyStaff = (assignmentId: string) => run(() =>
 const removeStaff = (assignmentId: string) => run(() =>
   $fetch(`/api/staff/${assignmentId}`, { method: 'DELETE' }), 'Stafrol verwijderd')
 
+// --- F9: invite an UNREGISTERED email to this team (registered accounts use
+// Toevoegen above). Pending invitations are listed per team, with cancel. ---
+interface TeamInvite {
+  id: string
+  email: string
+  role: 'player' | 'staff'
+  expiresAt: string
+  expired: boolean
+  inviterName: string | null
+}
+const { data: invites, refresh: refreshInvites }
+  = await useFetch<TeamInvite[]>('/api/invitations', { query: { teamId } })
+
+const invitePlayer = () => run(async () => {
+  await $fetch('/api/invitations', { method: 'POST', body: { teamId, email: playerEmail.value, role: 'player' } })
+  playerEmail.value = ''
+  await refreshInvites()
+}, 'Uitnodiging verstuurd')
+
+const inviteStaff = () => run(async () => {
+  await $fetch('/api/invitations', { method: 'POST', body: { teamId, email: staffEmail.value, role: 'staff' } })
+  staffEmail.value = ''
+  await refreshInvites()
+}, isAdmin.value
+  ? 'Uitnodiging verstuurd'
+  : 'Uitnodiging verstuurd - stafrol wacht na aanmelden op goedkeuring beheerder')
+
+const cancelInvite = (id: string) => run(async () => {
+  await $fetch(`/api/invitations/${id}`, { method: 'DELETE' })
+  await refreshInvites()
+}, 'Uitnodiging ingetrokken')
+
 // --- F28: speeldagenkalender category for this team ---
 interface KalenderOption { columnId: string, region: string, season: string, title: string }
 interface KalenderOptionsResponse {
@@ -342,14 +374,28 @@ const removeAbsence = (absenceId: string) => run(async () => {
             <UInput
               v-model="playerEmail"
               class="w-full"
-              placeholder="e-mailadres van geregistreerde speler"
+              placeholder="e-mailadres van speler"
             />
             <UButton
               label="Toevoegen"
               :loading="busy"
               @click="addPlayer"
             />
+            <UButton
+              label="Uitnodigen"
+              color="neutral"
+              variant="outline"
+              :loading="busy"
+              @click="invitePlayer"
+            />
           </div>
+          <p
+            v-if="isAdmin"
+            class="text-sm text-muted"
+          >
+            'Toevoegen' koppelt een bestaand account; 'Uitnodigen' mailt een nieuw lid
+            een registratielink voor dit team.
+          </p>
           <ul class="divide-y divide-default">
             <li
               v-for="p in data.players"
@@ -390,12 +436,19 @@ const removeAbsence = (absenceId: string) => run(async () => {
             <UInput
               v-model="staffEmail"
               class="w-full"
-              placeholder="e-mailadres van geregistreerd staflid"
+              placeholder="e-mailadres van staflid"
             />
             <UButton
               label="Toevoegen"
               :loading="busy"
               @click="addStaff"
+            />
+            <UButton
+              label="Uitnodigen"
+              color="neutral"
+              variant="outline"
+              :loading="busy"
+              @click="inviteStaff"
             />
           </div>
           <ul class="divide-y divide-default">
@@ -442,6 +495,48 @@ const removeAbsence = (absenceId: string) => run(async () => {
             </li>
           </ul>
         </div>
+      </UCard>
+
+      <UCard v-if="(isAdmin || isStaff) && invites?.length">
+        <template #header>
+          <h2 class="font-semibold">
+            Openstaande uitnodigingen ({{ invites.length }})
+          </h2>
+        </template>
+        <ul class="divide-y divide-default">
+          <li
+            v-for="invite in invites"
+            :key="invite.id"
+            class="flex items-center justify-between gap-3 py-2"
+          >
+            <span class="min-w-0 truncate">
+              {{ invite.email }}
+              <UBadge
+                color="neutral"
+                variant="subtle"
+                :label="invite.role === 'player' ? 'speler' : 'staflid'"
+              />
+              <UBadge
+                v-if="invite.expired"
+                color="warning"
+                variant="subtle"
+                label="verlopen"
+              />
+              <span
+                v-if="invite.inviterName"
+                class="text-muted text-sm"
+              > - uitgenodigd door {{ invite.inviterName }}</span>
+            </span>
+            <UButton
+              label="Intrekken"
+              size="xs"
+              color="neutral"
+              variant="ghost"
+              :loading="busy"
+              @click="cancelInvite(invite.id)"
+            />
+          </li>
+        </ul>
       </UCard>
 
       <UCard>

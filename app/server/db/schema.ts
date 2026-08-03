@@ -311,3 +311,25 @@ export const parentLinks = pgTable('parent_links', {
   status: text('status', { enum: ['pending', 'active'] }).notNull().default('pending'),
   createdAt: timestamp('created_at').notNull().defaultNow()
 }, t => [uniqueIndex('parent_links_parent_player_uq').on(t.parentUserId, t.playerUserId)])
+
+// F9: email invitations - invite an UNREGISTERED email to register and land in the
+// right team/role. staffStatus snapshots the F8 semantics at invite time: invited by
+// an admin -> the assignment becomes 'active' on accept; invited by team staff ->
+// 'pending' until an admin verifies. Player invites are admin-only (mirrors F8).
+// 'expired' is derived from expiresAt, not stored. One pending invite per (team, email),
+// enforced in the service.
+export const invitations = pgTable('invitations', {
+  id: id(),
+  clubId: text('club_id').notNull().references(() => clubs.id, { onDelete: 'cascade' }),
+  teamId: text('team_id').notNull().references(() => teams.id, { onDelete: 'cascade' }),
+  email: text('email').notNull(),
+  role: text('role', { enum: ['player', 'staff'] }).notNull(),
+  staffStatus: text('staff_status', { enum: ['pending', 'active'] }),
+  invitedByUserId: text('invited_by_user_id').references(() => user.id, { onDelete: 'set null' }),
+  token: text('token').notNull().unique().$defaultFn(() => crypto.randomUUID()),
+  status: text('status', { enum: ['pending', 'accepted', 'cancelled'] }).notNull().default('pending'),
+  expiresAt: timestamp('expires_at').notNull(),
+  acceptedByUserId: text('accepted_by_user_id').references(() => user.id, { onDelete: 'set null' }),
+  acceptedAt: timestamp('accepted_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow()
+})

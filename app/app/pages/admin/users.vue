@@ -38,6 +38,41 @@ async function createAccount() {
   }
 }
 
+// F9: club-wide pending invitations - listing and cancelling (invites are created
+// from the team pages, where the team context lives).
+interface InviteRow {
+  id: string
+  email: string
+  role: 'player' | 'staff'
+  teamName: string
+  inviterName: string | null
+  expiresAt: string
+  expired: boolean
+}
+const invites = ref<InviteRow[]>([])
+const { fmtDate } = useFormats()
+
+async function refreshInvites() {
+  if (!isAdmin.value) return
+  try {
+    invites.value = await $fetch<InviteRow[]>('/api/invitations')
+  } catch {
+    invites.value = []
+  }
+}
+onMounted(refreshInvites)
+watch(isAdmin, refreshInvites)
+
+async function cancelInvite(invite: InviteRow) {
+  try {
+    await $fetch(`/api/invitations/${invite.id}`, { method: 'DELETE' })
+    toast.add({ title: `Uitnodiging voor ${invite.email} ingetrokken` })
+    await refreshInvites()
+  } catch (err) {
+    toast.add({ title: (err as { statusMessage?: string }).statusMessage || 'Intrekken is niet gelukt', color: 'error' })
+  }
+}
+
 // F24: enforced password standard; lowering below 'medium' needs explicit confirmation.
 // 'Aangepast' defines explicit rules (min length + required character elements).
 const policyItems = [
@@ -205,6 +240,68 @@ function confirmWeakCancel() {
       variant="subtle"
       title="Alleen club- of systeembeheerders kunnen accounts aanmaken."
     />
+
+    <UCard v-if="isAdmin">
+      <template #header>
+        <h2 class="font-semibold">
+          Uitnodigingen
+        </h2>
+      </template>
+      <div class="space-y-4">
+        <p class="text-sm text-muted">
+          Openstaande uitnodigingen per e-mail (F9). Nieuwe leden nodig je uit vanaf de
+          teampagina (Beheer / Teams); daar kies je het team en de rol.
+        </p>
+        <p
+          v-if="invites.length === 0"
+          class="text-sm text-muted"
+        >
+          Er staan geen uitnodigingen open.
+        </p>
+        <ul
+          v-else
+          class="divide-y divide-default"
+        >
+          <li
+            v-for="invite in invites"
+            :key="invite.id"
+            class="py-2 flex items-center justify-between gap-3"
+          >
+            <div class="min-w-0">
+              <p class="truncate">
+                {{ invite.email }}
+                <UBadge
+                  color="neutral"
+                  variant="subtle"
+                  class="ml-1"
+                >
+                  {{ invite.role === 'player' ? 'speler' : 'staflid' }}
+                </UBadge>
+                <UBadge
+                  v-if="invite.expired"
+                  color="warning"
+                  variant="subtle"
+                  class="ml-1"
+                >
+                  verlopen
+                </UBadge>
+              </p>
+              <p class="text-sm text-muted truncate">
+                {{ invite.teamName }}<span v-if="invite.inviterName"> - uitgenodigd door {{ invite.inviterName }}</span>
+                - geldig tot {{ fmtDate(invite.expiresAt.slice(0, 10)) }}
+              </p>
+            </div>
+            <UButton
+              label="Intrekken"
+              size="xs"
+              color="neutral"
+              variant="ghost"
+              @click="cancelInvite(invite)"
+            />
+          </li>
+        </ul>
+      </div>
+    </UCard>
 
     <UCard v-if="clubData?.club">
       <template #header>
