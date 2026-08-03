@@ -89,7 +89,7 @@ First tenant: **FC Aalsmeer**, starting with one team: **MO17-4**. One club with
 
 | ID | P | Status | Feature |
 |----|---|--------|---------|
-| F16 | P2 | planned | **Automated team email**: schedule reminders, change/cancellation notices, absence nudges, and **automated pre-match mails** with match info (from F12/F21); per-member opt-out. |
+| F16 | P2 | in-progress | **Automated team email**: schedule reminders, change/cancellation notices, absence nudges, and **automated pre-match mails** with match info (from F12/F21); per-member opt-out. Built: pure rules (`notification-rules.ts`) fix the due windows - match-info 48 h before a match, training reminder 24 h before, absence nudge 4 h before, never at/after kick-off and never for a cancelled session; a training gets the reminder and a match the match-info, so one session never sends both. Recipients = the team's players, their **active** parents (mailed about that child) and **active** staff, each filtered on their own opt-out. Time-based sends run from `dispatchDueNotifications` (Nitro interval plugin, 15 min) and are idempotent through the `sent_notifications` ledger (written before sending: losing one mail beats mailing a team twice). Change/cancellation/reinstatement notices are **event-driven** from `updateSession` and from a club closure's bulk cancel, list only the fields that actually moved, and never fail the schedule change that triggered them. Opt-out per kind on the account page. |
 | F17 | P3 | planned | **Manual "email my team"** for staff/admin: compose once, delivered to the team respecting opt-outs. |
 
 ### Platform
