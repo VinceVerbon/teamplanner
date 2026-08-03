@@ -1,0 +1,10 @@
+# Build context is the repo root (deploy/compose.yaml: context: ..).
+# Keep host-only and generated trees out of the image build.
+**/node_modules
+**/.data
+app/.nuxt
+app/.output
+.git
+sessions
+deploy/.env
+**/*.log

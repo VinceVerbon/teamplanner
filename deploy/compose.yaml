@@ -1,0 +1,55 @@
+# teamplanner stack - target host + domain TBD (docs/deploy-to-<host>.md written
+# at first deploy). Build from a repo clone on the host; run compose from deploy/.
+#
+# 2 services:
+#   tp-app - Nuxt 4 full-stack (Nitro server serves pages + /api/*)
+#   tp-db  - PostgreSQL 17 (only reachable on the stack network, no host port)
+
+name: teamplanner
+
+services:
+  tp-app:
+    build:
+      context: ..
+      dockerfile: deploy/app/Dockerfile
+    image: teamplanner/app:local
+    container_name: tp-app
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-teamplanner}:${POSTGRES_PASSWORD}@tp-db:5432/${POSTGRES_DB:-teamplanner}
+    ports:
+      - "${TP_HTTP_PORT:-3000}:3000"
+    depends_on:
+      tp-db:
+        condition: service_healthy
+    restart: unless-stopped
+    # Behind Traefik (WhereLog pattern on dexter/monkey): remove the ports: block,
+    # add `networks: [proxy]` (external network) and the routing labels here:
+    #   - "traefik.enable=true"
+    #   - "traefik.docker.network=proxy"
+    #   - "traefik.http.routers.tp-app.rule=Host(`teamplanner.<domain>`)"
+    #   - "traefik.http.routers.tp-app.entrypoints=websecure"
+    #   - "traefik.http.routers.tp-app.tls.certresolver=letsencrypt"
+    #   - "traefik.http.services.tp-app.loadbalancer.server.port=3000"
+
+  tp-db:
+    image: postgres:17-alpine
+    container_name: tp-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-teamplanner}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+      POSTGRES_DB: ${POSTGRES_DB:-teamplanner}
+    volumes:
+      - tp-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-teamplanner} -d ${POSTGRES_DB:-teamplanner}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  # All app state lives in Postgres (uploads are DB columns) - this is the one
+  # volume that must be backed up (pg_dump, see deploy/README.md).
+  tp-pgdata:
