@@ -98,6 +98,60 @@ const forceReload = () => kalenderAction(async () => {
   openDiff.value = null
 }, 'Speeldagenkalenders volledig opnieuw geladen')
 
+// F28 follow-up: kalender-PDF sources. URLs change per season, so they are discovered
+// from the KNVB landing page and only replace the configured set after confirmation.
+interface DiscoveredSource { url: string, slug: string, season: string, region: string | null }
+const { data: knvbSources, refresh: refreshKnvbSources }
+  = await useFetch<{ season: string, sources: { region: string, url: string }[], configured: boolean }>('/api/instance/knvb-sources')
+const discovery = ref<{ season: string, discovered: DiscoveredSource[] } | null>(null)
+const discoveryChoices = reactive<Record<string, string | null>>({})
+const sourcesBusy = ref(false)
+
+const regionItems = Object.entries(REGION_LABELS).map(([value, label]) => ({ label, value }))
+
+const currentSourceUrls = computed(() => new Set(knvbSources.value?.sources.map(s => s.url) ?? []))
+
+async function discoverSources() {
+  sourcesBusy.value = true
+  try {
+    const res = await $fetch<{ season: string, discovered: DiscoveredSource[] }>(
+      '/api/instance/knvb-sources/discover', { method: 'POST' })
+    discovery.value = { season: res.season, discovered: res.discovered }
+    for (const d of res.discovered) discoveryChoices[d.url] = d.region
+  } catch (e) {
+    toast.add({ title: (e as { statusMessage?: string }).statusMessage || 'Bronnen zoeken is niet gelukt', color: 'error' })
+  } finally {
+    sourcesBusy.value = false
+  }
+}
+
+const discoveryValid = computed(() => {
+  if (!discovery.value) return false
+  const chosen = discovery.value.discovered.map(d => discoveryChoices[d.url])
+  return chosen.every(Boolean) && new Set(chosen).size === chosen.length
+})
+
+async function confirmSources() {
+  if (!discovery.value) return
+  sourcesBusy.value = true
+  try {
+    await $fetch('/api/instance/knvb-sources', {
+      method: 'PUT',
+      body: {
+        season: discovery.value.season,
+        sources: discovery.value.discovered.map(d => ({ region: discoveryChoices[d.url], url: d.url }))
+      }
+    })
+    toast.add({ title: 'Kalenderbronnen bijgewerkt' })
+    discovery.value = null
+    await refreshKnvbSources()
+  } catch (e) {
+    toast.add({ title: (e as { statusMessage?: string }).statusMessage || 'Opslaan is niet gelukt', color: 'error' })
+  } finally {
+    sourcesBusy.value = false
+  }
+}
+
 function fmtStamp(ts: string): string {
   return new Date(ts).toLocaleString('nl-NL')
 }
@@ -230,10 +284,11 @@ async function revokeAdmin(id: string) {
         </template>
         <div class="space-y-4">
           <p class="text-sm text-muted">
-            Haalt de officiele speeldagenkalenders (veldvoetbal, seizoen 2026/'27) op van
-            knvb.nl en parseert ze centraal. Na activering worden bij een nieuwe ophaalactie
-            alleen wijzigingen verwerkt; verwerkte wijzigingen zijn voor alle clubs en staf
-            zichtbaar in het wijzigingenlogboek (Beheer &gt; Schema).
+            Haalt de officiele speeldagenkalenders (veldvoetbal, seizoen
+            {{ knvbSources?.season || '2026/\'27' }}) op van knvb.nl en parseert ze
+            centraal. Na activering worden bij een nieuwe ophaalactie alleen wijzigingen
+            verwerkt; verwerkte wijzigingen zijn voor alle clubs en staf zichtbaar in het
+            wijzigingenlogboek (Beheer &gt; Schema).
           </p>
           <div class="flex gap-2">
             <UButton
@@ -251,6 +306,88 @@ async function revokeAdmin(id: string) {
               @click="confirmForceReload = true"
             />
           </div>
+
+          <div class="flex items-center gap-2 text-sm text-muted">
+            <span>
+              Bronnen: {{ knvbSources?.sources.length ?? 0 }} PDF-links, seizoen
+              {{ knvbSources?.season }}
+              ({{ knvbSources?.configured ? 'bevestigd door beheerder' : 'ingebouwde standaard' }}).
+              Bij een nieuw seizoen publiceert de KNVB nieuwe PDF's - vernieuw dan de bronnen.
+            </span>
+            <UButton
+              label="Bronnen vernieuwen"
+              icon="i-lucide-search"
+              size="xs"
+              color="neutral"
+              variant="outline"
+              :loading="sourcesBusy"
+              @click="discoverSources"
+            />
+          </div>
+
+          <UCard
+            v-if="discovery"
+            variant="subtle"
+          >
+            <template #header>
+              <h3 class="font-medium">
+                Gevonden op knvb.nl: seizoen {{ discovery.season }} ({{ discovery.discovered.length }} PDF's)
+              </h3>
+            </template>
+            <div class="space-y-3">
+              <p class="text-sm text-muted">
+                Controleer de regio per gevonden PDF en bevestig. Pas na bevestiging worden
+                deze links gebruikt bij het ophalen van kalenders. Een PDF zonder herkende
+                regio vraagt om een keuze.
+              </p>
+              <ul class="divide-y divide-default">
+                <li
+                  v-for="d in discovery.discovered"
+                  :key="d.url"
+                  class="py-2 flex flex-col sm:flex-row sm:items-center gap-2"
+                >
+                  <div class="flex-1 min-w-0">
+                    <span class="text-sm break-all">{{ d.slug }}</span>
+                    <UBadge
+                      :color="currentSourceUrls.has(d.url) ? 'neutral' : 'info'"
+                      variant="subtle"
+                      :label="currentSourceUrls.has(d.url) ? 'ongewijzigd' : 'nieuw'"
+                      class="ml-2"
+                    />
+                    <UBadge
+                      v-if="!discoveryChoices[d.url]"
+                      color="warning"
+                      variant="subtle"
+                      label="regio niet herkend - kies"
+                      class="ml-2"
+                    />
+                  </div>
+                  <USelect
+                    :model-value="discoveryChoices[d.url] ?? undefined"
+                    :items="regionItems"
+                    placeholder="Kies regio"
+                    class="w-56"
+                    @update:model-value="v => { discoveryChoices[d.url] = v as string }"
+                  />
+                </li>
+              </ul>
+              <div class="flex gap-2">
+                <UButton
+                  label="Bevestigen en opslaan"
+                  :disabled="!discoveryValid"
+                  :loading="sourcesBusy"
+                  @click="confirmSources"
+                />
+                <UButton
+                  label="Annuleren"
+                  color="neutral"
+                  variant="ghost"
+                  :disabled="sourcesBusy"
+                  @click="discovery = null"
+                />
+              </div>
+            </div>
+          </UCard>
 
           <UAlert
             v-for="r in fetchSummary"

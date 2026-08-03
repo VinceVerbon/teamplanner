@@ -106,6 +106,15 @@ const setMain = (locationId: string | null) => act(() =>
                 />
               </div>
               <div class="flex items-center gap-3">
+                <UButton
+                  label="Toon op kaart"
+                  icon="i-lucide-map-pin"
+                  size="xs"
+                  color="neutral"
+                  variant="ghost"
+                  :to="mapsSearchUrl(loc.name, loc.address)"
+                  target="_blank"
+                />
                 <UCheckbox
                   :model-value="loc.isClubLocation"
                   label="clublocatie"
@@ -123,10 +132,10 @@ const setMain = (locationId: string | null) => act(() =>
                 />
                 <UButton
                   v-else-if="isAdmin && loc.id === mainLocationId"
-                  label="Geen hoofdlocatie"
+                  label="Hoofdlocatie opheffen"
                   size="xs"
                   color="neutral"
-                  variant="ghost"
+                  variant="outline"
                   :disabled="busy"
                   @click="setMain(null)"
                 />

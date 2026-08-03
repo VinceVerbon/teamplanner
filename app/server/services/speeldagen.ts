@@ -9,24 +9,16 @@ import {
   speeldagKalenders, speeldagKalenderColumns, speeldagKalenderDays, speeldagKalenderCells,
   speeldagKalenderChanges, clubs, teams
 } from '../db/schema'
+import { getKnvbSources, type KalenderRegion } from './knvb-sources'
 
 // F28: KNVB speeldagenkalenders - fetched and parsed CENTRALLY (instance admin).
 // Lifecycle: fetched kalenders are 'pending' until activated; once an active kalender
 // exists, a fetch produces a diff that the admin processes or cancels; processed
 // changes land in the central changelog (visible to all clubs and staff).
 
-export type KalenderRegion = 'landelijk' | 'landelijk-jeugd' | 'noord' | 'oost' | 'west' | 'zuid'
-
-export const KNVB_SEASON = '2026/\'27'
-
-export const KNVB_SOURCES: { region: KalenderRegion, url: string }[] = [
-  { region: 'landelijk', url: 'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027' },
-  { region: 'landelijk-jeugd', url: 'https://www.knvb.nl/downloads/sites/bestand/knvb/29860/speeldagenkalender-veld-landelijk-jeugd-2026-2027' },
-  { region: 'noord', url: 'https://www.knvb.nl/downloads/sites/bestand/knvb/29861/speeldagenkalender-veld-noord-2026-2027' },
-  { region: 'oost', url: 'https://www.knvb.nl/downloads/sites/bestand/knvb/29862/speeldagenkalender-veld-oost-2026-2027' },
-  { region: 'west', url: 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027' },
-  { region: 'zuid', url: 'https://www.knvb.nl/downloads/sites/bestand/knvb/29864/speeldagenkalender-veld-zuid-2026-2027' }
-]
+// Region model, season and source URLs live in knvb-sources.ts (admin-confirmable
+// discovery, built-in seed as fallback); re-exported here for existing importers.
+export { KNVB_SEASON, KNVB_SOURCES, type KalenderRegion } from './knvb-sources'
 
 export type PdfLoader = (url: string) => Promise<Uint8Array>
 
@@ -177,13 +169,14 @@ export interface FetchRegionResult {
  * active kalender the result is a diff (stored pending only when there ARE changes). */
 export async function fetchKalenders(requesterId: string, loadPdf: PdfLoader = defaultPdfLoader): Promise<FetchRegionResult[]> {
   await requireInstanceAdmin(requesterId)
+  const { season, sources } = await getKnvbSources()
   const results: FetchRegionResult[] = []
-  for (const source of KNVB_SOURCES) {
+  for (const source of sources) {
     try {
       const parsed = await parsePdf(await loadPdf(source.url))
-      const active = await findKalender(KNVB_SEASON, source.region, 'active')
+      const active = await findKalender(season, source.region, 'active')
       if (!active) {
-        const stored = await storeKalender(parsed, source.region, KNVB_SEASON, source.url, 'pending')
+        const stored = await storeKalender(parsed, source.region, season, source.url, 'pending')
         results.push({
           region: source.region, status: 'pending-new', kalenderId: stored.id,
           columns: parsed.columns.length, days: parsed.days.length
@@ -192,12 +185,12 @@ export async function fetchKalenders(requesterId: string, loadPdf: PdfLoader = d
       }
       const changes = diffKalenders(await getKalenderGrid(active.id), parsed)
       if (changes.length === 0) {
-        const stale = await findKalender(KNVB_SEASON, source.region, 'pending')
+        const stale = await findKalender(season, source.region, 'pending')
         if (stale) await deleteKalender(stale.id)
         results.push({ region: source.region, status: 'no-changes' })
         continue
       }
-      const stored = await storeKalender(parsed, source.region, KNVB_SEASON, source.url, 'pending')
+      const stored = await storeKalender(parsed, source.region, season, source.url, 'pending')
       results.push({
         region: source.region, status: 'changes-pending', kalenderId: stored.id,
         columns: parsed.columns.length, days: parsed.days.length, changes
@@ -287,13 +280,14 @@ export async function discardPendingKalender(requesterId: string, kalenderId: st
 export async function forceReloadKalenders(requesterId: string, loadPdf: PdfLoader = defaultPdfLoader): Promise<FetchRegionResult[]> {
   await requireInstanceAdmin(requesterId)
   const db = getDb()
+  const { season, sources } = await getKnvbSources()
   const batchId = crypto.randomUUID()
   const results: FetchRegionResult[] = []
-  for (const source of KNVB_SOURCES) {
+  for (const source of sources) {
     try {
       const parsed = await parsePdf(await loadPdf(source.url))
       const oldOnes = await db.select().from(speeldagKalenders).where(and(
-        eq(speeldagKalenders.season, KNVB_SEASON),
+        eq(speeldagKalenders.season, season),
         eq(speeldagKalenders.region, source.region)
       ))
       const oldActive = oldOnes.find(k => k.status === 'active')
@@ -309,7 +303,7 @@ export async function forceReloadKalenders(requesterId: string, loadPdf: PdfLoad
         : []
       const titleByColId = new Map(oldCols.map(c => [c.id, c.title]))
       for (const k of oldOnes) await deleteKalender(k.id)
-      const stored = await storeKalender(parsed, source.region, KNVB_SEASON, source.url, 'active')
+      const stored = await storeKalender(parsed, source.region, season, source.url, 'active')
       const newCols = await db.select().from(speeldagKalenderColumns)
         .where(eq(speeldagKalenderColumns.kalenderId, stored.id))
       for (const team of affectedTeams) {
@@ -319,7 +313,7 @@ export async function forceReloadKalenders(requesterId: string, loadPdf: PdfLoad
           await db.update(teams).set({ kalenderColumnId: match.id }).where(eq(teams.id, team.id))
         }
       }
-      await logChanges(KNVB_SEASON, source.region, batchId, [{ kind: 'kalender-force-reloaded' }])
+      await logChanges(season, source.region, batchId, [{ kind: 'kalender-force-reloaded' }])
       results.push({
         region: source.region, status: 'pending-new', kalenderId: stored.id,
         columns: parsed.columns.length, days: parsed.days.length
