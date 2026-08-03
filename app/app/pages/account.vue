@@ -124,6 +124,20 @@ async function setSelfManageOptIn(link: ParentLink, enabled: boolean) {
   toast.add({ title: 'Instelling opgeslagen' })
   await refreshLinks()
 }
+
+// F16 mail preferences. Opted in by default; these are operational team mails.
+const MAIL_PREFS = [
+  { key: 'mailReminders', label: 'Herinnering voor trainingen', hint: 'Een dag van tevoren' },
+  { key: 'mailMatchInfo', label: 'Wedstrijdinformatie', hint: 'Twee dagen van tevoren, met tegenstander en locatie' },
+  { key: 'mailAbsenceNudges', label: 'Afmeldherinnering', hint: 'Kort voor aanvang, als er nog geen afmelding is' },
+  { key: 'mailChanges', label: 'Wijzigingen en afgelastingen', hint: 'Zodra het programma verandert' }
+] as const
+
+async function setMailPref(key: string, enabled: boolean) {
+  await $fetch('/api/me/mail-settings', { method: 'PATCH', body: { [key]: enabled } })
+  toast.add({ title: 'Instelling opgeslagen' })
+  await refresh()
+}
 </script>
 
 <template>
@@ -273,6 +287,37 @@ async function setSelfManageOptIn(link: ParentLink, enabled: boolean) {
             @update:model-value="setParentManageOptIn($event as boolean)"
           />
         </template>
+      </div>
+    </UCard>
+
+    <UCard v-if="me?.settings">
+      <template #header>
+        <h2 class="font-semibold">
+          E-mailvoorkeuren
+        </h2>
+      </template>
+      <p class="text-sm text-muted mb-4">
+        Je krijgt standaard bericht over het programma van je team. Zet hier uit wat je niet wilt ontvangen.
+      </p>
+      <div class="space-y-4">
+        <div
+          v-for="pref in MAIL_PREFS"
+          :key="pref.key"
+          class="flex items-start justify-between gap-4"
+        >
+          <div>
+            <p class="text-sm">
+              {{ pref.label }}
+            </p>
+            <p class="text-xs text-muted">
+              {{ pref.hint }}
+            </p>
+          </div>
+          <USwitch
+            :model-value="me.settings[pref.key]"
+            @update:model-value="(v: boolean) => setMailPref(pref.key, v)"
+          />
+        </div>
       </div>
     </UCard>
 

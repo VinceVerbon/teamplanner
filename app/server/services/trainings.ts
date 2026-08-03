@@ -290,6 +290,11 @@ export async function updateSession(requesterId: string, sessionId: string, patc
   }
   const [updated] = await db.update(trainingSessions).set(next)
     .where(eq(trainingSessions.id, sessionId)).returning()
+  // F16: tell the team about cancellations, reinstatements and moved sessions. Imported
+  // lazily so the notification service never becomes a startup dependency of trainings,
+  // and awaited-but-never-throwing so a mail problem cannot fail the schedule change.
+  const { notifySessionChanged, sessionSnapshot } = await import('./notifications')
+  await notifySessionChanged(sessionId, await sessionSnapshot(session))
   return updated!
 }
 

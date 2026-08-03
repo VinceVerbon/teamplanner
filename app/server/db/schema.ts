@@ -21,6 +21,12 @@ export const user = pgTable('user', {
   mustSetPassword: boolean('must_set_password').notNull().default(false),
   // F22: the seeded first-run admin; admin of the (single) club without a club_admins row.
   isBootstrapAdmin: boolean('is_bootstrap_admin').notNull().default(false),
+  // F16 per-member mail opt-out. Opted IN by default: these are operational team mails,
+  // not marketing, and a member who never visits settings should still get them.
+  mailReminders: boolean('mail_reminders').notNull().default(true),
+  mailChanges: boolean('mail_changes').notNull().default(true),
+  mailAbsenceNudges: boolean('mail_absence_nudges').notNull().default(true),
+  mailMatchInfo: boolean('mail_match_info').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow()
 })
@@ -245,6 +251,19 @@ export const absences = pgTable('absences', {
   reportedAt: timestamp('reported_at').notNull().defaultNow(),
   createdAt: timestamp('created_at').notNull().defaultNow()
 }, t => [uniqueIndex('absences_session_player_uq').on(t.sessionId, t.playerUserId)])
+
+// --- F16: ledger of automated mails already sent. The dispatcher is idempotent through
+// this table: a restart, an overlapping tick or a re-run may never mail a member twice
+// for the same (kind, session). Event-driven notices (change/cancellation) are NOT
+// recorded here - they fire per actual change and a second real change must mail again.
+export const sentNotifications = pgTable('sent_notifications', {
+  id: id(),
+  clubId: text('club_id').notNull().references(() => clubs.id, { onDelete: 'cascade' }),
+  kind: text('kind', { enum: ['reminder', 'match-info', 'absence-nudge'] }).notNull(),
+  sessionId: text('session_id').notNull().references(() => trainingSessions.id, { onDelete: 'cascade' }),
+  recipientUserId: text('recipient_user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  sentAt: timestamp('sent_at').notNull().defaultNow()
+}, t => [uniqueIndex('sent_notifications_kind_session_recipient_uq').on(t.kind, t.sessionId, t.recipientUserId)])
 
 // --- F28: KNVB speeldagenkalenders - INSTANCE level (fetched/parsed centrally, no
 // club_id). One kalender per (season, region, status); columns are the categories the

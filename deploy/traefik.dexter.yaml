@@ -20,6 +20,19 @@ services:
       - "traefik.http.routers.tp-app.entrypoints=websecure"
       - "traefik.http.routers.tp-app.tls.certresolver=myresolver"
       - "traefik.http.services.tp-app.loadbalancer.server.port=3000"
+      # Router middlewares chain AFTER the entrypoint's global crowdsec@docker -
+      # naming them here does not disable crowdsec.
+      - "traefik.http.routers.tp-app.middlewares=tp-ratelimit@docker,tp-headers@docker"
+      - "traefik.http.middlewares.tp-ratelimit.ratelimit.average=20"
+      - "traefik.http.middlewares.tp-ratelimit.ratelimit.burst=40"
+      # HSTS: the hostname is HTTPS-only by construction (no router on `web`).
+      - "traefik.http.middlewares.tp-headers.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.tp-headers.headers.stsIncludeSubdomains=false"
+      - "traefik.http.middlewares.tp-headers.headers.forceSTSHeader=true"
+      - "traefik.http.middlewares.tp-headers.headers.contentTypeNosniff=true"
+      - "traefik.http.middlewares.tp-headers.headers.frameDeny=true"
+      - "traefik.http.middlewares.tp-headers.headers.referrerPolicy=strict-origin-when-cross-origin"
+      - "traefik.http.middlewares.tp-headers.headers.customResponseHeaders.X-Powered-By="
 
 networks:
   traefik-proxy:

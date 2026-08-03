@@ -155,6 +155,11 @@ export async function createNoTrainingPeriod(
     .set({ status: 'cancelled', cancelReason: reason })
     .where(scope)
     .returning()
+  // F16: a closure can wipe out weeks of trainings at once - tell the affected teams.
+  if (cancelled.length) {
+    const { notifySessionsCancelled } = await import('./notifications')
+    await notifySessionsCancelled(cancelled.map(s => s.id), reason)
+  }
   return { period: period!, cancelledSessions: cancelled.length }
 }
 

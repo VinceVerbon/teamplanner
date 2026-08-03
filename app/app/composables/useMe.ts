@@ -13,6 +13,10 @@ interface MeResponse {
     selfManageOptIn: boolean
     parentManageOptIn: boolean
     mustSetPassword: boolean
+    mailReminders: boolean
+    mailChanges: boolean
+    mailAbsenceNudges: boolean
+    mailMatchInfo: boolean
   }
 }
 

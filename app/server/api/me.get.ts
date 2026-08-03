@@ -15,7 +15,11 @@ export default defineEventHandler(async (event) => {
       dateOfBirth: user.dateOfBirth,
       selfManageOptIn: user.selfManageOptIn,
       parentManageOptIn: user.parentManageOptIn,
-      mustSetPassword: user.mustSetPassword
+      mustSetPassword: user.mustSetPassword,
+      mailReminders: user.mailReminders,
+      mailChanges: user.mailChanges,
+      mailAbsenceNudges: user.mailAbsenceNudges,
+      mailMatchInfo: user.mailMatchInfo
     })
     .from(user).where(eq(user.id, session.user.id))
   return {
@@ -25,7 +29,11 @@ export default defineEventHandler(async (event) => {
       dateOfBirth: row?.dateOfBirth ?? null,
       selfManageOptIn: row?.selfManageOptIn ?? false,
       parentManageOptIn: row?.parentManageOptIn ?? false,
-      mustSetPassword: row?.mustSetPassword ?? false
+      mustSetPassword: row?.mustSetPassword ?? false,
+      mailReminders: row?.mailReminders ?? true,
+      mailChanges: row?.mailChanges ?? true,
+      mailAbsenceNudges: row?.mailAbsenceNudges ?? true,
+      mailMatchInfo: row?.mailMatchInfo ?? true
     }
   }
 })

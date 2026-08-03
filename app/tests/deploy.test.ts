@@ -101,6 +101,62 @@ describe('F18 env contract', () => {
   })
 })
 
+describe('F18 container hardening', () => {
+  it('drops capabilities and blocks privilege escalation on both services', () => {
+    for (const svc of ['tp-app', 'tp-db']) {
+      expect(compose.services[svc].security_opt, svc).toContain('no-new-privileges:true')
+      expect(compose.services[svc].cap_drop, svc).toContain('ALL')
+    }
+  })
+
+  it('bounds pids and memory on both services', () => {
+    for (const svc of ['tp-app', 'tp-db']) {
+      expect(compose.services[svc].pids_limit, svc).toBeGreaterThan(0)
+      expect(compose.services[svc].mem_limit, svc).toBeTruthy()
+    }
+  })
+
+  it('runs the database as the postgres user, not root', () => {
+    expect(compose.services['tp-db'].user).toBe('postgres')
+  })
+
+  it('grants the db only the caps its entrypoint needs', () => {
+    // cap_drop ALL would break the postgres entrypoint's data-dir setup without these.
+    expect(compose.services['tp-db'].cap_add).toEqual(
+      expect.arrayContaining(['CHOWN', 'SETGID', 'SETUID'])
+    )
+    expect(compose.services['tp-app'].cap_add).toBeUndefined()
+  })
+})
+
+describe('F18 dexter Traefik overlay', () => {
+  const overlayRaw = readFileSync(join(repoRoot, 'deploy', 'traefik.dexter.yaml'), 'utf8')
+  const overlay = parse(overlayRaw)
+  const labels: string[] = overlay.services['tp-app'].labels
+
+  it('publishes no host port (Traefik fronts it)', () => {
+    expect(overlayRaw).toContain('ports: !reset []')
+  })
+
+  it('routes only the intended host on the TLS entrypoint', () => {
+    expect(labels).toContain('traefik.http.routers.tp-app.rule=Host(`teamplanner.syquens.com`)')
+    expect(labels).toContain('traefik.http.routers.tp-app.entrypoints=websecure')
+    expect(labels.filter(l => /routers\.[^.]+\.rule=/.test(l))).toHaveLength(1)
+  })
+
+  it('sends HSTS and the baseline security headers', () => {
+    const joined = labels.join('\n')
+    for (const key of ['stsSeconds', 'forceSTSHeader', 'contentTypeNosniff', 'frameDeny', 'referrerPolicy']) {
+      expect(joined, key).toContain(key)
+    }
+  })
+
+  it('rate-limits the router', () => {
+    expect(labels.join('\n')).toMatch(/tp-ratelimit\.ratelimit\.average=\d+/)
+    expect(labels).toContain('traefik.http.routers.tp-app.middlewares=tp-ratelimit@docker,tp-headers@docker')
+  })
+})
+
 describe('F18 .dockerignore', () => {
   it('keeps host node_modules, local data and the real env out of the build context', () => {
     for (const entry of ['**/node_modules', '**/.data', 'deploy/.env', 'app/.output']) {

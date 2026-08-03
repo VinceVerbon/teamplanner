@@ -23,6 +23,10 @@ services:
       tp-db:
         condition: service_healthy
     restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    pids_limit: 256
+    mem_limit: 1g
     # Behind Traefik: use the host overlay instead of editing this file -
     # e.g. traefik.dexter.yaml (removes ports:, joins the proxy network, adds the
     # routing labels with the host's observed resolver/network names):
@@ -44,6 +48,13 @@ services:
       retries: 5
       start_period: 10s
     restart: unless-stopped
+    user: postgres
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    # Retained caps are what the postgres entrypoint needs for its data dir.
+    cap_add: ["CHOWN", "SETGID", "SETUID", "DAC_OVERRIDE", "FOWNER"]
+    pids_limit: 256
+    mem_limit: 1g
 
 volumes:
   # All app state lives in Postgres (uploads are DB columns) - this is the one
