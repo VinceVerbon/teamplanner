@@ -1,3 +1,5 @@
+import { weekNumber } from '#shared/utils/week-number'
+
 // F26: instance-wide date/time formatting, driven by the instance settings.
 interface InstanceFormatSettings {
   dateFormat: 'DD-MM-YYYY' | 'MM/DD/YYYY' | 'YYYY-MM-DD'
@@ -38,5 +40,10 @@ export function useFormats() {
     return `${h12}:${m} ${suffix}`
   }
 
-  return { settings, load, fmtDate, fmtTime }
+  /** F29 (F26 leftover): week number of a 'YYYY-MM-DD' date per instance settings. */
+  function fmtWeek(d: string): string {
+    return `wk ${weekNumber(d, settings.value.weekNumbering)}`
+  }
+
+  return { settings, load, fmtDate, fmtTime, fmtWeek }
 }

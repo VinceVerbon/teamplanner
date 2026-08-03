@@ -17,7 +17,7 @@ const CLASS_LABELS: Record<string, string> = {
 
 const todayStr = new Date().toISOString().slice(0, 10)
 
-const { load: loadFormats, fmtDate: fmtDateBase, settings: fmtSettings } = useFormats()
+const { load: loadFormats, fmtDate: fmtDateBase, settings: fmtSettings, fmtWeek } = useFormats()
 onMounted(loadFormats)
 
 function fmtDate(d: string): string {
@@ -146,8 +146,9 @@ async function withdraw(absenceId: string) {
                 v-if="s.type === 'match'"
                 color="primary"
                 variant="subtle"
-                :label="s.homeAway === 'home' ? 'wedstrijd thuis' : 'wedstrijd uit'"
+                :label="s.homeAway ? (s.homeAway === 'home' ? 'wedstrijd thuis' : 'wedstrijd uit') : 'wedstrijd'"
               />
+              <span class="text-muted text-xs">{{ fmtWeek(s.date) }}</span>
               {{ fmtDate(s.date) }} {{ s.startTime }}-{{ s.endTime }}
               <strong v-if="s.type === 'match'">{{ s.opponent }}</strong>
               <span class="text-muted text-sm">

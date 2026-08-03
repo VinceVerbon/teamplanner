@@ -241,6 +241,44 @@ const doImport = () => run(async () => {
   await refreshSessions()
 }, 'Import verwerkt')
 
+// --- F29: prefill placeholder matches from the team's speeldagenkalender column ---
+interface KalenderWeekend {
+  date: string
+  dateEnd: string | null
+  label: string
+  value: string
+  remark: string | null
+  classification: 'speeldag' | 'reserve'
+  alreadyImported: boolean
+}
+const kalenderWeekends = ref<KalenderWeekend[] | null>(null)
+const selectedWeekends = ref<Set<string>>(new Set())
+const kalenderStartTime = ref('14:30')
+
+const loadKalenderWeekends = () => run(async () => {
+  kalenderWeekends.value = await $fetch<KalenderWeekend[]>(`/api/teams/${teamId}/kalender-weekends`)
+  // Speeldagen preselected; reserve days (Inhaal, combined values) opt-in.
+  selectedWeekends.value = new Set(kalenderWeekends.value
+    .filter(w => w.classification === 'speeldag' && !w.alreadyImported)
+    .map(w => w.date))
+}, 'Speeldagen geladen - controleer en voeg toe')
+
+function toggleWeekend(w: KalenderWeekend) {
+  if (selectedWeekends.value.has(w.date)) selectedWeekends.value.delete(w.date)
+  else selectedWeekends.value.add(w.date)
+  selectedWeekends.value = new Set(selectedWeekends.value)
+}
+
+const importKalenderDates = () => run(async () => {
+  const res = await $fetch(`/api/teams/${teamId}/kalender-weekends/import`, {
+    method: 'POST',
+    body: { dates: [...selectedWeekends.value], startTime: kalenderStartTime.value }
+  })
+  toast.add({ title: `${res.imported} speeldag(en) toegevoegd, ${res.skipped} overgeslagen` })
+  kalenderWeekends.value = null
+  await refreshSessions()
+}, 'Speeldagen verwerkt')
+
 const newPeriod = reactive({ startDate: '', endDate: '', reason: '' })
 const addPeriod = () => run(async () => {
   await $fetch('/api/no-training-periods', { method: 'POST', body: { teamId, ...newPeriod } })
@@ -253,7 +291,7 @@ const removePeriod = (id: string) => run(async () => {
   await refreshPeriods()
 }, 'Periode verwijderd')
 
-const { load: loadFormats, fmtDate: fmtDateBase, settings: fmtSettings } = useFormats()
+const { load: loadFormats, fmtDate: fmtDateBase, settings: fmtSettings, fmtWeek } = useFormats()
 onMounted(loadFormats)
 
 function fmtDate(d: string): string {
@@ -698,6 +736,66 @@ const removeAbsence = (absenceId: string) => run(async () => {
                 @click="doImport"
               />
             </div>
+            <template v-if="selectedKalenderColumn">
+              <USeparator label="of uit de speeldagenkalender" />
+              <UButton
+                v-if="!kalenderWeekends"
+                label="Speeldagen laden"
+                variant="outline"
+                color="neutral"
+                :loading="busy"
+                @click="loadKalenderWeekends"
+              />
+              <div
+                v-else
+                class="space-y-2"
+              >
+                <ul class="divide-y divide-default">
+                  <li
+                    v-for="w in kalenderWeekends"
+                    :key="w.date"
+                    class="flex items-center gap-3 py-2"
+                  >
+                    <UCheckbox
+                      :model-value="selectedWeekends.has(w.date)"
+                      :disabled="w.alreadyImported"
+                      @update:model-value="toggleWeekend(w)"
+                    />
+                    <span :class="w.alreadyImported ? 'text-muted' : ''">
+                      {{ fmtDate(w.date) }}
+                      <strong>{{ w.value }}</strong>
+                      <span class="text-muted text-sm">{{ w.label }}<template v-if="w.remark"> - {{ w.remark }}</template></span>
+                      <UBadge
+                        v-if="w.classification === 'reserve'"
+                        color="warning"
+                        variant="subtle"
+                        label="reserve"
+                      />
+                      <UBadge
+                        v-if="w.alreadyImported"
+                        color="neutral"
+                        variant="subtle"
+                        label="al toegevoegd"
+                      />
+                    </span>
+                  </li>
+                </ul>
+                <div class="flex gap-2 items-end">
+                  <UFormField label="Aanvang">
+                    <UInput
+                      v-model="kalenderStartTime"
+                      type="time"
+                    />
+                  </UFormField>
+                  <UButton
+                    :label="`Voeg ${selectedWeekends.size} speeldag(en) toe als wedstrijd-placeholder`"
+                    :disabled="!selectedWeekends.size"
+                    :loading="busy"
+                    @click="importKalenderDates"
+                  />
+                </div>
+              </div>
+            </template>
             <USeparator label="of handmatig" />
             <div class="grid grid-cols-2 md:grid-cols-6 gap-2 items-end">
               <UFormField label="Datum">
@@ -809,8 +907,9 @@ const removeAbsence = (absenceId: string) => run(async () => {
                     v-if="s.type === 'match'"
                     color="primary"
                     variant="subtle"
-                    :label="s.homeAway === 'home' ? 'thuis' : 'uit'"
+                    :label="s.homeAway ? (s.homeAway === 'home' ? 'thuis' : 'uit') : 'wedstrijd'"
                   />
+                  <span class="text-muted text-xs">{{ fmtWeek(s.date) }}</span>
                   {{ fmtDate(s.date) }} {{ s.startTime }}-{{ s.endTime }}
                   <strong v-if="s.type === 'match'">{{ s.opponent }}</strong>
                   <span class="text-muted text-sm">{{ s.locationName }}<template v-if="s.trainerName"> - {{ s.trainerName }}</template></span>
