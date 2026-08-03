@@ -1,0 +1,26 @@
+# Traefik overlay for dexter.syquens.com - values observed on the host 2026-08-03:
+# provider network `traefik-proxy`, cert resolver `myresolver` (TLS challenge),
+# entrypoint `websecure` (crowdsec middleware applied globally on the entrypoint).
+#
+# Run from deploy/ on the host:
+#   docker compose -f compose.yaml -f traefik.dexter.yaml up -d
+#
+# TP_HTTP_PORT in .env is unused in this mode (no host port published).
+
+services:
+  tp-app:
+    ports: !reset []
+    networks:
+      default: null
+      traefik-proxy: null
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-proxy"
+      - "traefik.http.routers.tp-app.rule=Host(`teamplanner.syquens.com`)"
+      - "traefik.http.routers.tp-app.entrypoints=websecure"
+      - "traefik.http.routers.tp-app.tls.certresolver=myresolver"
+      - "traefik.http.services.tp-app.loadbalancer.server.port=3000"
+
+networks:
+  traefik-proxy:
+    external: true
