@@ -1,8 +1,8 @@
 # teamplanner deploy stack (F18)
 
 Docker stack per the WhereLog pattern: one multistage-built Nuxt/Nitro app container
-plus PostgreSQL 17. Target host + domain are TBD; `docs/deploy-to-<host>.md` gets
-written at the first real deploy.
+plus PostgreSQL 17. **Deployed on dexter as https://teamplanner.syquens.com since
+2026-08-03** - host specifics and procedure: `docs/deploy-to-dexter.md`.
 
 ## Layout
 

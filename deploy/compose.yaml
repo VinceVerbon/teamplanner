@@ -23,14 +23,10 @@ services:
       tp-db:
         condition: service_healthy
     restart: unless-stopped
-    # Behind Traefik (WhereLog pattern on dexter/monkey): remove the ports: block,
-    # add `networks: [proxy]` (external network) and the routing labels here:
-    #   - "traefik.enable=true"
-    #   - "traefik.docker.network=proxy"
-    #   - "traefik.http.routers.tp-app.rule=Host(`teamplanner.<domain>`)"
-    #   - "traefik.http.routers.tp-app.entrypoints=websecure"
-    #   - "traefik.http.routers.tp-app.tls.certresolver=letsencrypt"
-    #   - "traefik.http.services.tp-app.loadbalancer.server.port=3000"
+    # Behind Traefik: use the host overlay instead of editing this file -
+    # e.g. traefik.dexter.yaml (removes ports:, joins the proxy network, adds the
+    # routing labels with the host's observed resolver/network names):
+    #   docker compose -f compose.yaml -f traefik.<host>.yaml up -d
 
   tp-db:
     image: postgres:17-alpine
