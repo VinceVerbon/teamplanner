@@ -4,7 +4,7 @@
 // bounces to /login.
 import { z } from 'zod'
 import type { FormSubmitEvent } from '@nuxt/ui'
-import { passwordStrength, STRENGTH_LABELS } from '../../shared/utils/password-strength'
+import { passwordStrength, STRENGTH_LABELS } from '#shared/utils/password-strength'
 
 const { data: bootstrap } = await useFetch('/api/bootstrap/status')
 

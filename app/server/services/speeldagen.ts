@@ -4,7 +4,7 @@ import { getDb } from '../utils/db'
 import { requireInstanceAdmin } from './instance'
 import { getUserRoles, isClubAdmin, isActiveStaffOfTeam } from '../utils/roles'
 import { parseKalenderItems, type ParsedKalender } from '../utils/knvb-kalender'
-import { describeChange, type KalenderChange } from '../../shared/utils/speeldagen-diff'
+import { describeChange, type KalenderChange } from '#shared/utils/speeldagen-diff'
 import {
   speeldagKalenders, speeldagKalenderColumns, speeldagKalenderDays, speeldagKalenderCells,
   speeldagKalenderChanges, clubs, teams

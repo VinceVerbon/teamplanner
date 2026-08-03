@@ -5,7 +5,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { getDb } from './db'
 import { sendMail } from './mailer'
 import { getPasswordPolicySpec } from './password-policy'
-import { evaluatePassword } from '../../shared/utils/password-strength'
+import { evaluatePassword } from '#shared/utils/password-strength'
 import * as schema from '../db/schema'
 
 // F24: every better-auth path that sets a password goes through the policy gate.

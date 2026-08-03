@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { dominantColorFromPixels } from '../../../shared/utils/dominant-color'
+import { dominantColorFromPixels } from '#shared/utils/dominant-color'
 
 definePageMeta({ middleware: 'auth' })
 

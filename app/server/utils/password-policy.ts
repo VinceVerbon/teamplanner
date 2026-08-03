@@ -3,7 +3,7 @@ import { getDb } from './db'
 import { clubs } from '../db/schema'
 import {
   evaluatePassword, type PasswordPolicySpec
-} from '../../shared/utils/password-strength'
+} from '#shared/utils/password-strength'
 
 export const DEFAULT_POLICY_SPEC: PasswordPolicySpec = { level: 'medium' }
 

@@ -2,7 +2,7 @@
 import {
   passwordStrength, STRENGTH_LABELS, customWeakerThanMedium,
   type PasswordPolicySetting, type CustomPasswordRules
-} from '../../../shared/utils/password-strength'
+} from '#shared/utils/password-strength'
 
 definePageMeta({ middleware: 'auth' })
 

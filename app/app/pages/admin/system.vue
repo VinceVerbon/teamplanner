@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // F26: instance-level (system) management - separate from club management. The instance
 // is not the club: one instance can hold multiple clubs later.
-import { changesToMarkdown, describeChange, type KalenderChange } from '../../../shared/utils/speeldagen-diff'
+import { changesToMarkdown, describeChange, type KalenderChange } from '#shared/utils/speeldagen-diff'
 
 definePageMeta({ middleware: 'auth' })
 
