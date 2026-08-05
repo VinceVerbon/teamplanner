@@ -32,9 +32,35 @@ docker exec tp-app wget -qO- http://127.0.0.1:3000/api/healthz
 - `deploy/.env` on the host (mode 600), generated on-host at first deploy.
 - Backed up in 1Password: item **`teamplanner dexter prod`** (Kim en Vince,
   id `akkdvym2cz5dpwci5eleevxtha`): Postgres password + `BETTER_AUTH_SECRET`.
-- `SMTP_*` is empty until the Gmail account exists (crosslog open issue) - mails
-  are logged to the container console, not delivered. Fill `.env` + `docker compose
-  ... up -d` to activate real mail.
+- `SMTP_*` is **live since 2026-08-05**: the stack sends real mail via
+  `smtp.gmail.com:587` (STARTTLS) as `teamplannernl@gmail.com`. Credentials in
+  1Password item **`Gmail Teamplanner`** (Kim en Vince, id
+  `mwd226o54rfmbq67r5so2nrytu`): `username`, `password` (account password),
+  `app password smtp` (the SMTP credential -> `SMTP_PASS`), `totp secret` (the
+  account's 2FA second factor - no phone number is registered, so this field is
+  the only way back in).
+- To rotate or re-apply: set `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=587`,
+  `SMTP_SECURE=false`, `SMTP_USER=<username>`, `SMTP_PASS=<app password smtp>`,
+  `MAIL_FROM=teamplanner <username>` in `deploy/.env`, then
+  `docker compose -f compose.yaml -f traefik.dexter.yaml up -d`. Previous file is
+  kept as `.env.bak`.
+- Gmail MVP limits apply: 500 recipients/day, ~20/hour, and Google rewrites the
+  `From` header to the authenticated account. Switch to a domain sender
+  (recommendation: SMTP2GO) per `docs/research-email-delivery.md` when volume or
+  branding demands it.
+
+### Verifying mail from the host
+
+Outbound 587 from dexter is open (verified 2026-08-05). To re-test end-to-end,
+run a one-off send inside the container - nodemailer only resolves from the
+server output dir, and the hardened container cannot delete files afterwards, so
+force-recreate `tp-app` when done:
+
+```bash
+docker cp send.mjs tp-app:/app/.output/server/send.mjs
+docker exec -w /app/.output/server tp-app node send.mjs you@example.com
+docker compose -f compose.yaml -f traefik.dexter.yaml up -d --force-recreate tp-app
+```
 
 ## Security posture (reviewed 2026-08-03, sentinel-security)
 
