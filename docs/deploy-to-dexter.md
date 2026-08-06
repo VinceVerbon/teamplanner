@@ -27,6 +27,16 @@ docker compose -f compose.yaml -f traefik.dexter.yaml up -d
 docker exec tp-app wget -qO- http://127.0.0.1:3000/api/healthz
 ```
 
+## Deploy log
+
+- **2026-08-03** - first real deploy (F18), stack live behind Traefik.
+- **2026-08-06** - redeploy `c29178a` -> `7bcf256` (F30 voetbal.nl team import,
+  F31 secure first-run, `docs/configuration.md`, team-page walkthrough polish).
+  Verified after `up -d`: `tp-app` healthy, `/api/healthz` 200 in-container and
+  over https, `/login` 200, `/api/voetbalnl/import-preview` 401 (route present,
+  auth required) and `/api/bootstrap/status` **404** - confirming F31 is live and
+  `BOOTSTRAP_TOKEN` is correctly unset on this host. No `.env` change was needed.
+
 ## Secrets
 
 - `deploy/.env` on the host (mode 600), generated on-host at first deploy.
@@ -88,9 +98,10 @@ only; plain HTTP 404s (fails closed) rather than serving the app.
   not exploited - but one unknown IP did fetch `/setup-admin` during the window.
   **This host completed first-run pre-F31** (admin password set 2026-08-03, in 1P
   `teamplanner dexter prod`), so dexter needs NO `BOOTSTRAP_TOKEN`: leaving it
-  unset is the wanted end state (bootstrap surface answers 404). After the next
-  image rebuild, optionally set `AUTH_DISABLE_SIGNUP=true` in `deploy/.env` for
-  invite-only (decision open with Vince).
+  unset is the wanted end state (bootstrap surface answers 404) - **confirmed live
+  on 2026-08-06 after the F31 rebuild: `/api/bootstrap/status` returns 404**.
+  Optionally set `AUTH_DISABLE_SIGNUP=true` in `deploy/.env` for invite-only
+  (decision open with Vince).
 - No CSP yet (needs building against the Nuxt asset graph; start in report-only).
 - Host-wide, outside this stack: the standalone `postgres` container binds
   `172.17.0.1:5432`, which is reachable from tp-app - an app RCE would get a
