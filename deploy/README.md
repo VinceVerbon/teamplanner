@@ -35,6 +35,9 @@ First-run setup (F31) is gated on a deploy-time secret:
 Optional: `AUTH_DISABLE_SIGNUP=true` makes the instance invite-only (F9
 invitations / F23 admin-created accounts remain).
 
+Full configuration reference (all env vars, F31 semantics, rate limits,
+troubleshooting): `../docs/configuration.md`.
+
 ## Notes
 
 - All app state lives in Postgres (logo uploads are DB columns): the `tp-pgdata`

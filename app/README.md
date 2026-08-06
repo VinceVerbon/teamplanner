@@ -13,7 +13,10 @@ Opens on http://localhost:3000. Without `DATABASE_URL` the server runs on an emb
 PGlite database in `./.data/pglite`; migrations apply automatically at startup.
 Without `SMTP_HOST` outgoing mail (verification, password reset) is logged to the console.
 
-Copy `.env.example` to `.env` for local overrides.
+Copy `.env.example` to `.env` for local overrides. Full configuration reference
+(every env var, plus the F31 first-run bootstrap ritual - a fresh database needs
+`BOOTSTRAP_TOKEN` + `/setup-admin?token=...` before anyone can log in):
+`../docs/configuration.md`.
 
 ## Tests
 
