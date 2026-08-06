@@ -14,9 +14,6 @@ const errorMsg = ref('')
 const googleEnabled = useRuntimeConfig().public.googleEnabled
 const route = useRoute()
 
-// F22: while the first-run admin password is unset, route the admin to the setup page.
-const { data: bootstrap } = await useFetch('/api/bootstrap/status')
-
 // Only follow internal redirect targets (no protocol-relative or absolute URLs).
 function redirectTarget(): string {
   const r = route.query.redirect
@@ -53,23 +50,6 @@ async function googleLogin() {
           Inloggen
         </h1>
       </template>
-
-      <UAlert
-        v-if="bootstrap?.pending"
-        color="info"
-        variant="subtle"
-        class="mb-4"
-        title="Eerste keer hier?"
-        description="Het standaard beheerdersaccount heeft nog geen wachtwoord."
-      >
-        <template #actions>
-          <UButton
-            label="Beheerderswachtwoord instellen"
-            size="xs"
-            to="/setup-admin"
-          />
-        </template>
-      </UAlert>
 
       <UForm
         :schema="schema"

@@ -22,9 +22,18 @@ docker compose build
 docker compose up -d
 ```
 
-The app applies Drizzle migrations at startup and, on a fresh database, seeds the
-F22 bootstrap admin (`admin@teamplanner.local`, empty password, forced password set
-on first login - sign in immediately after first start).
+The app applies Drizzle migrations at startup and, when no bootstrap admin exists,
+seeds the F22 admin (`admin@teamplanner.local`) with an UNUSABLE (null) password.
+First-run setup (F31) is gated on a deploy-time secret:
+
+1. Generate a long random `BOOTSTRAP_TOKEN`, set it in `deploy/.env`, `up -d`.
+2. Open `https://<host>/setup-admin?token=<BOOTSTRAP_TOKEN>` and set the admin
+   password (store it in 1Password FIRST, then submit).
+3. Remove `BOOTSTRAP_TOKEN` from `.env` and recreate the app container - without
+   the env var the bootstrap endpoints answer 404.
+
+Optional: `AUTH_DISABLE_SIGNUP=true` makes the instance invite-only (F9
+invitations / F23 admin-created accounts remain).
 
 ## Notes
 

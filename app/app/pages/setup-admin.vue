@@ -1,12 +1,22 @@
 <script setup lang="ts">
-// F22: first-run setup - set the password of the seeded default admin. Only reachable
-// while that password is still empty; afterwards the server answers 410 and this page
-// bounces to /login.
+// F22/F31: first-run setup - set the password of the seeded default admin. Only
+// reachable via the installation link /setup-admin?token=<BOOTSTRAP_TOKEN> (the token
+// comes from the deploy environment; the server compares it timing-safe). Without a
+// valid token the API answers 404/401 and this page only shows a generic notice.
 import { z } from 'zod'
 import type { FormSubmitEvent } from '@nuxt/ui'
 import { passwordStrength, STRENGTH_LABELS } from '#shared/utils/password-strength'
 
-const { data: bootstrap } = await useFetch('/api/bootstrap/status')
+const route = useRoute()
+const token = typeof route.query.token === 'string' ? route.query.token : ''
+
+const { data: bootstrap } = await useFetch('/api/bootstrap/status', {
+  headers: { 'x-bootstrap-token': token },
+  // Without (or with a wrong) token the server answers 404/401; treat as "not open".
+  ignoreResponseError: false,
+  server: false,
+  immediate: !!token
+})
 
 const schema = z.object({
   password: z.string().min(8, 'Minimaal 8 tekens'),
@@ -26,6 +36,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
   try {
     const { email } = await $fetch('/api/bootstrap/password', {
       method: 'POST',
+      headers: { 'x-bootstrap-token': token },
       body: { newPassword: event.data.password }
     })
     const { error } = await authClient.signIn.email({ email, password: event.data.password })
@@ -34,7 +45,9 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     const e = err as { statusCode?: number, statusMessage?: string }
     errorMsg.value = e.statusCode === 410
       ? 'De eerste installatie is al afgerond. Log gewoon in.'
-      : e.statusMessage || 'Instellen is niet gelukt.'
+      : e.statusCode === 401 || e.statusCode === 404
+        ? 'Ongeldige installatielink. Gebruik de link met de BOOTSTRAP_TOKEN uit de deploy-omgeving.'
+        : e.statusMessage || 'Instellen is niet gelukt.'
   } finally {
     pending.value = false
   }
@@ -51,13 +64,18 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
       </template>
 
       <div
-        v-if="!bootstrap?.pending"
+        v-if="!token || !bootstrap?.pending"
         class="space-y-4"
       >
         <UAlert
           color="info"
           variant="subtle"
-          title="De eerste installatie is al afgerond."
+          :title="token
+            ? 'Er is hier niets in te stellen.'
+            : 'Deze pagina werkt alleen via de installatielink.'"
+          :description="token
+            ? 'De eerste installatie is al afgerond, of de installatielink is ongeldig.'
+            : 'Open /setup-admin?token=<BOOTSTRAP_TOKEN> met het token uit de deploy-omgeving.'"
         />
         <UButton
           label="Naar inloggen"
@@ -75,8 +93,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
       >
         <p class="text-sm text-muted">
           Dit is de eerste keer dat de app draait. Stel nu het wachtwoord in voor het
-          standaard beheerdersaccount <strong>{{ bootstrap.email }}</strong>. Zonder dit
-          wachtwoord kan er niets beheerd worden.
+          standaard beheerdersaccount. Zonder dit wachtwoord kan er niets beheerd worden.
         </p>
         <UFormField
           label="Nieuw wachtwoord"

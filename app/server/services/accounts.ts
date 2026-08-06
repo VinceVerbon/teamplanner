@@ -11,14 +11,18 @@ export const BOOTSTRAP_ADMIN_EMAIL = 'admin@teamplanner.local'
 const CREDENTIAL_PROVIDER = 'credential'
 
 /**
- * F22: seed the default admin on a truly fresh install (zero users). The account starts
- * with an EMPTY password and mustSetPassword, so the only possible first action is
- * setting a real one via /api/bootstrap/password. Existing databases are never touched.
+ * F22/F31: seed the default admin when no bootstrap admin exists yet. The credential
+ * row is seeded with password NULL, so normal sign-in can never authenticate it; the
+ * only way in is /api/bootstrap/password, which is gated on BOOTSTRAP_TOKEN (F31).
+ * Idempotent on the isBootstrapAdmin flag (not "zero users"): a stranger's signup on
+ * a fresh public deploy can no longer suppress seeding, and an instance that lost its
+ * admin gets a deploy-operator recovery path.
  */
 export async function ensureBootstrapAdmin(): Promise<{ seeded: boolean }> {
   const db = getDb()
-  const anyUser = await db.select({ id: user.id }).from(user).limit(1)
-  if (anyUser.length > 0) return { seeded: false }
+  const existing = await db.select({ id: user.id }).from(user)
+    .where(eq(user.isBootstrapAdmin, true)).limit(1)
+  if (existing.length > 0) return { seeded: false }
   const [admin] = await db.insert(user).values({
     name: 'Beheerder',
     email: BOOTSTRAP_ADMIN_EMAIL,
@@ -30,7 +34,7 @@ export async function ensureBootstrapAdmin(): Promise<{ seeded: boolean }> {
     accountId: admin!.id,
     providerId: CREDENTIAL_PROVIDER,
     userId: admin!.id,
-    password: await hashPassword('')
+    password: null
   })
   // F26: the seeded account is the first INSTANCE admin (not implicitly a club admin).
   await db.insert(instanceAdmins).values({ userId: admin!.id })
@@ -60,15 +64,17 @@ async function findPendingBootstrapAdmin() {
   return admin ?? null
 }
 
-/** F22: whether the first-run "set the admin password" step is still open. */
-export async function bootstrapStatus(): Promise<{ pending: boolean, email: string | null }> {
+/** F22/F31: whether the first-run "set the admin password" step is still open.
+ * Boolean only - the email is not exposed (the route sits behind BOOTSTRAP_TOKEN). */
+export async function bootstrapStatus(): Promise<{ pending: boolean }> {
   const admin = await findPendingBootstrapAdmin()
-  return { pending: !!admin, email: admin ? admin.email : null }
+  return { pending: !!admin }
 }
 
 /**
- * F22: one-shot first-run password set. Only works while the seeded admin still has its
- * empty bootstrap password; afterwards the path is gone (410) forever.
+ * F22/F31: one-shot first-run password set. Only works while the seeded admin still has
+ * its unusable bootstrap credential (password NULL, or the legacy scrypt('') from
+ * pre-F31 seeds); afterwards the path is gone (410) forever.
  */
 export async function setBootstrapPassword(newPassword: string): Promise<{ email: string }> {
   const admin = await findPendingBootstrapAdmin()
@@ -78,8 +84,9 @@ export async function setBootstrapPassword(newPassword: string): Promise<{ email
   const db = getDb()
   const [cred] = await db.select().from(account)
     .where(and(eq(account.userId, admin.id), eq(account.providerId, CREDENTIAL_PROVIDER)))
-  // Defense in depth: this path only ever replaces the seeded empty password.
-  if (!cred?.password || !(await verifyPassword({ hash: cred.password, password: '' }))) {
+  // Defense in depth: this path only ever replaces the seeded unusable credential.
+  if (!cred || !(cred.password === null
+    || await verifyPassword({ hash: cred.password, password: '' }))) {
     throw createError({ statusCode: 410, statusMessage: 'First-run setup is already completed' })
   }
   await assertPasswordAllowed(newPassword)

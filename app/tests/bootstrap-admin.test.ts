@@ -1,7 +1,9 @@
-// Test-set for F22: default admin seeded on a fresh install with an empty password,
-// first-run forced password set, and the one-time nature of that path.
-import { describe, it, expect, beforeAll } from 'vitest'
-import { eq } from 'drizzle-orm'
+// Test-set for F22 + F31: default admin seeded with an UNUSABLE (null) password,
+// token-gated one-shot first-run password set, seeding idempotent on the
+// isBootstrapAdmin flag, and the rate-limit/token primitives behind the routes.
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest'
+import { eq, and } from 'drizzle-orm'
+import type { H3Event } from 'h3'
 import { freshDb } from './setup'
 
 // Modules that (transitively) bind better-auth's adapter at import time are imported
@@ -15,18 +17,22 @@ beforeAll(async () => {
   auth = (await import('../server/utils/auth')).auth
 })
 
-describe('F22 seeding - main flow', () => {
-  it('seeds the default admin on an empty database', async () => {
+describe('F22/F31 seeding - main flow', () => {
+  it('seeds the default admin on an empty database with a NULL password', async () => {
     const result = await accounts.ensureBootstrapAdmin()
     expect(result.seeded).toBe(true)
     const { getDb } = await import('../server/utils/db')
-    const { user } = await import('../server/db/schema')
+    const { user, account } = await import('../server/db/schema')
     const [admin] = await getDb().select().from(user)
       .where(eq(user.email, accounts.BOOTSTRAP_ADMIN_EMAIL))
     expect(admin).toBeDefined()
     expect(admin!.emailVerified).toBe(true)
     expect(admin!.isBootstrapAdmin).toBe(true)
     expect(admin!.mustSetPassword).toBe(true)
+    const [cred] = await getDb().select().from(account)
+      .where(and(eq(account.userId, admin!.id), eq(account.providerId, 'credential')))
+    expect(cred).toBeDefined()
+    expect(cred!.password).toBeNull()
   })
 
   it('is idempotent: a second call never seeds again (edge)', async () => {
@@ -34,61 +40,43 @@ describe('F22 seeding - main flow', () => {
     expect(result.seeded).toBe(false)
   })
 
-  it('reports the pending first-run state', async () => {
+  it('reports the pending first-run state as a boolean only (no email oracle)', async () => {
     const status = await accounts.bootstrapStatus()
     expect(status.pending).toBe(true)
-    expect(status.email).toBe(accounts.BOOTSTRAP_ADMIN_EMAIL)
+    expect('email' in status).toBe(false)
   })
 
-  it('empty-password sign-in works ONLY in the bootstrap state and is fully gated (edge)', async () => {
-    // This is the documented first-run semantics: the seeded admin's password is empty,
-    // and any session it yields may reach nothing but the password endpoints.
-    const signIn = await auth.api.signInEmail({
-      body: { email: accounts.BOOTSTRAP_ADMIN_EMAIL, password: '' }
-    })
-    expect(signIn.token).toBeTruthy()
-    const { requireUser } = await import('../server/utils/guards')
-    const fakeEvent = (path: string) => ({
-      headers: new Headers({ Authorization: `Bearer ${signIn.token}` }),
-      path
-    }) as unknown as import('h3').H3Event
-    await expect(requireUser(fakeEvent('/api/teams')))
-      .rejects.toMatchObject({ statusCode: 403 })
-    await expect(requireUser(fakeEvent('/api/me/password')))
-      .resolves.toMatchObject({ email: accounts.BOOTSTRAP_ADMIN_EMAIL })
+  it('the seeded credential can NEVER sign in - empty password is rejected (edge)', async () => {
+    // F31: pre-F31 seeds stored scrypt('') so `password: ''` authenticated during
+    // the bootstrap window. The null-password seed closes that path entirely.
+    await expect(
+      auth.api.signInEmail({ body: { email: accounts.BOOTSTRAP_ADMIN_EMAIL, password: '' } })
+    ).rejects.toThrow()
   })
 })
 
-describe('F22 first-run password set', () => {
+describe('F22/F31 first-run password set', () => {
   it('rejects a password below the default medium policy', async () => {
     await expect(accounts.setBootstrapPassword('abcdefgh'))
       .rejects.toMatchObject({ statusCode: 400 })
   })
 
   it('sets a policy-compliant password, clears the flag, and sign-in works', async () => {
-    // A session grabbed via the empty bootstrap password must die when the password is set.
-    const bootstrapSignIn = await auth.api.signInEmail({
-      body: { email: accounts.BOOTSTRAP_ADMIN_EMAIL, password: '' }
-    })
     const result = await accounts.setBootstrapPassword('Stevig-Wachtwoord-2026')
     expect(result.email).toBe(accounts.BOOTSTRAP_ADMIN_EMAIL)
     const status = await accounts.bootstrapStatus()
     expect(status.pending).toBe(false)
-    const stale = await auth.api.getSession({
-      headers: new Headers({ Authorization: `Bearer ${bootstrapSignIn.token}` })
-    })
-    expect(stale).toBeNull()
     const signIn = await auth.api.signInEmail({
       body: { email: accounts.BOOTSTRAP_ADMIN_EMAIL, password: 'Stevig-Wachtwoord-2026' }
     })
     expect(signIn.token).toBeTruthy()
-    // And the empty password itself is dead.
+    // And the empty password stays dead.
     await expect(
       auth.api.signInEmail({ body: { email: accounts.BOOTSTRAP_ADMIN_EMAIL, password: '' } })
     ).rejects.toThrow()
   })
 
-  it('the empty-password path is dead forever afterwards (edge)', async () => {
+  it('the first-run path is dead forever afterwards (edge)', async () => {
     await expect(accounts.setBootstrapPassword('Ander-Stevig-Wachtwoord-1'))
       .rejects.toMatchObject({ statusCode: 410 })
   })
@@ -110,19 +98,71 @@ describe('F22/F26 admin rights', () => {
   })
 })
 
-describe('F22 seeding - existing installs are never touched', () => {
-  it('does not seed when any user already exists (edge)', async () => {
-    // Fresh database again; NOTE: no auth API usage after this point (its adapter is
-    // bound to the previous instance).
+describe('F31 seeding idempotency - keyed on isBootstrapAdmin, not "zero users"', () => {
+  it('seeds even when other users exist, as long as no bootstrap admin does (edge)', async () => {
+    // The pre-F31 "zero users" check let a stranger's signup suppress seeding forever.
+    // NOTE: no auth API usage after freshDb() (its adapter is bound to the previous
+    // instance) - DB-level assertions only from here on.
     await freshDb()
     const { getDb } = await import('../server/utils/db')
+    const { user, account, instanceAdmins } = await import('../server/db/schema')
+    await getDb().insert(user).values({ name: 'Stranger', email: 'stranger@example.com' })
+    const result = await accounts.ensureBootstrapAdmin()
+    expect(result.seeded).toBe(true)
+    const [admin] = await getDb().select().from(user)
+      .where(eq(user.email, accounts.BOOTSTRAP_ADMIN_EMAIL))
+    expect(admin!.isBootstrapAdmin).toBe(true)
+    const [cred] = await getDb().select().from(account)
+      .where(eq(account.userId, admin!.id))
+    expect(cred!.password).toBeNull()
+    // Recovery path: the seeded admin is (also) an instance admin.
+    const admins = await getDb().select().from(instanceAdmins)
+    expect(admins.some(a => a.userId === admin!.id)).toBe(true)
+  })
+
+  it('never seeds twice, even after first-run setup completed (edge)', async () => {
+    // Simulate a completed install: bootstrap admin exists, password set, flag cleared.
+    const { getDb } = await import('../server/utils/db')
     const { user } = await import('../server/db/schema')
-    await getDb().insert(user).values({ name: 'Existing', email: 'existing@example.com' })
+    await getDb().update(user).set({ mustSetPassword: false })
+      .where(eq(user.email, accounts.BOOTSTRAP_ADMIN_EMAIL))
     const result = await accounts.ensureBootstrapAdmin()
     expect(result.seeded).toBe(false)
     const rows = await getDb().select().from(user)
       .where(eq(user.email, accounts.BOOTSTRAP_ADMIN_EMAIL))
-    expect(rows).toHaveLength(0)
+    expect(rows).toHaveLength(1)
+  })
+})
+
+describe('F31 legacy pre-F31 seeds still complete their first run', () => {
+  it('accepts the old scrypt("") credential and replaces it (edge)', async () => {
+    await freshDb()
+    const { getDb } = await import('../server/utils/db')
+    const { user, account } = await import('../server/db/schema')
+    const { hashPassword } = await import('better-auth/crypto')
+    // A database seeded before F31: empty-string hash instead of null.
+    const [admin] = await getDb().insert(user).values({
+      name: 'Beheerder', email: accounts.BOOTSTRAP_ADMIN_EMAIL,
+      emailVerified: true, isBootstrapAdmin: true, mustSetPassword: true
+    }).returning()
+    await getDb().insert(account).values({
+      accountId: admin!.id, providerId: 'credential', userId: admin!.id,
+      password: await hashPassword('')
+    })
+    const result = await accounts.setBootstrapPassword('Stevig-Wachtwoord-2026')
+    expect(result.email).toBe(accounts.BOOTSTRAP_ADMIN_EMAIL)
+    expect((await accounts.bootstrapStatus()).pending).toBe(false)
+  })
+
+  it('refuses when the credential already holds a real password (edge)', async () => {
+    // mustSetPassword still true (e.g. crashed mid-flow after the password update):
+    // the seed-credential check must refuse to overwrite a real password.
+    const { getDb } = await import('../server/utils/db')
+    const { user } = await import('../server/db/schema')
+    await getDb().update(user).set({ mustSetPassword: true })
+      .where(eq(user.email, accounts.BOOTSTRAP_ADMIN_EMAIL))
+    await expect(accounts.setBootstrapPassword('Nog-Een-Wachtwoord-3'))
+      .rejects.toMatchObject({ statusCode: 410 })
   })
 })
 
@@ -153,5 +193,76 @@ describe('F26 instance-admin backfill for pre-split databases', () => {
     await getDb().insert(user).values({ name: 'Regular', email: 'regular@example.com' })
     expect((await accounts.ensureInstanceAdminBackfill()).backfilled).toBe(false)
     expect(await getDb().select().from(instanceAdmins)).toHaveLength(0)
+  })
+})
+
+describe('F31 bootstrap token gate', () => {
+  const ORIGINAL = process.env.BOOTSTRAP_TOKEN
+
+  afterEach(() => {
+    if (ORIGINAL === undefined) delete process.env.BOOTSTRAP_TOKEN
+    else process.env.BOOTSTRAP_TOKEN = ORIGINAL
+  })
+
+  function fakeEvent(headers: Record<string, string>, url = '/api/bootstrap/status') {
+    return {
+      path: url,
+      node: { req: { headers, url } }
+    } as unknown as H3Event
+  }
+
+  it('refuses entirely (404) when BOOTSTRAP_TOKEN is not configured', async () => {
+    delete process.env.BOOTSTRAP_TOKEN
+    const { requireBootstrapToken } = await import('../server/utils/bootstrap-token')
+    expect(() => requireBootstrapToken(fakeEvent({ 'x-bootstrap-token': 'anything' })))
+      .toThrowError(expect.objectContaining({ statusCode: 404 }))
+  })
+
+  it('rejects a wrong or missing token (401) (edge)', async () => {
+    process.env.BOOTSTRAP_TOKEN = 'correct-token-value'
+    const { requireBootstrapToken } = await import('../server/utils/bootstrap-token')
+    expect(() => requireBootstrapToken(fakeEvent({ 'x-bootstrap-token': 'wrong' })))
+      .toThrowError(expect.objectContaining({ statusCode: 401 }))
+    expect(() => requireBootstrapToken(fakeEvent({})))
+      .toThrowError(expect.objectContaining({ statusCode: 401 }))
+  })
+
+  it('accepts the configured token via header and via query', async () => {
+    process.env.BOOTSTRAP_TOKEN = 'correct-token-value'
+    const { requireBootstrapToken } = await import('../server/utils/bootstrap-token')
+    expect(() => requireBootstrapToken(fakeEvent({ 'x-bootstrap-token': 'correct-token-value' })))
+      .not.toThrow()
+    expect(() => requireBootstrapToken(
+      fakeEvent({}, '/api/bootstrap/status?token=correct-token-value')
+    )).not.toThrow()
+  })
+})
+
+describe('F31 rate limiter', () => {
+  it('allows max attempts in a window, then answers 429 (edge)', async () => {
+    const { assertRateLimit, resetRateLimits } = await import('../server/utils/rate-limit')
+    resetRateLimits()
+    for (let i = 0; i < 5; i++) {
+      expect(() => assertRateLimit('test-key', 5, 60_000)).not.toThrow()
+    }
+    expect(() => assertRateLimit('test-key', 5, 60_000))
+      .toThrowError(expect.objectContaining({ statusCode: 429 }))
+    // Other keys are unaffected.
+    expect(() => assertRateLimit('other-key', 5, 60_000)).not.toThrow()
+  })
+
+  it('resets after the window expires (edge)', async () => {
+    const { assertRateLimit, resetRateLimits } = await import('../server/utils/rate-limit')
+    resetRateLimits()
+    vi.useFakeTimers()
+    try {
+      for (let i = 0; i < 5; i++) assertRateLimit('window-key', 5, 60_000)
+      expect(() => assertRateLimit('window-key', 5, 60_000))
+        .toThrowError(expect.objectContaining({ statusCode: 429 }))
+      vi.advanceTimersByTime(60_001)
+      expect(() => assertRateLimit('window-key', 5, 60_000)).not.toThrow()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

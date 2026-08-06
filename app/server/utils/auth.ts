@@ -32,6 +32,9 @@ export const auth = betterAuth({
   }),
   emailAndPassword: {
     enabled: true,
+    // F31: invite-only switch - set AUTH_DISABLE_SIGNUP=true to close public
+    // self-registration (accounts then come from F9 invitations or F23 admin creation).
+    disableSignUp: process.env.AUTH_DISABLE_SIGNUP === 'true',
     requireEmailVerification: true,
     sendResetPassword: async ({ user, url }) => {
       await sendMail({

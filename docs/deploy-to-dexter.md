@@ -74,15 +74,20 @@ Confirmed good by the review: tp-db has no published port and is off `traefik-pr
 no privileged containers, no docker.sock, no host binds; one router, `websecure`
 only; plain HTTP 404s (fails closed) rather than serving the app.
 
-**Open items (tracked as F31 + below), not yet fixed:**
-- First-run bootstrap is an unauthenticated takeover window on any fresh public
-  deploy - see **F31**. On this deploy the window was open ~10 minutes; the access
-  log shows no POST to `/api/bootstrap/password` and no sign-in/sign-up from anyone
-  but the operator IP, and the DB holds exactly one user (the seeded admin) with
-  zero sessions, so it was not exploited - but one unknown IP did fetch
-  `/setup-admin` during the window. **Set the admin password immediately after any
-  future fresh deploy, or deploy without the Traefik labels and do first-run over
-  an SSH tunnel.**
+**Open items (tracked as F31 + below):**
+- ~~First-run bootstrap is an unauthenticated takeover window on any fresh public
+  deploy~~ **FIXED by F31 (built 2026-08-06)**: bootstrap routes now require
+  `BOOTSTRAP_TOKEN` (404 when unset), the seed credential is `password: null`, and
+  nothing advertises the state. Historical detail of the original window: on this
+  deploy it was open ~10 minutes; the access log shows no POST to
+  `/api/bootstrap/password` and no sign-in/sign-up from anyone but the operator IP,
+  and the DB held exactly one user (the seeded admin) with zero sessions, so it was
+  not exploited - but one unknown IP did fetch `/setup-admin` during the window.
+  **This host completed first-run pre-F31** (admin password set 2026-08-03, in 1P
+  `teamplanner dexter prod`), so dexter needs NO `BOOTSTRAP_TOKEN`: leaving it
+  unset is the wanted end state (bootstrap surface answers 404). After the next
+  image rebuild, optionally set `AUTH_DISABLE_SIGNUP=true` in `deploy/.env` for
+  invite-only (decision open with Vince).
 - No CSP yet (needs building against the Nuxt asset graph; start in report-only).
 - Host-wide, outside this stack: the standalone `postgres` container binds
   `172.17.0.1:5432`, which is reachable from tp-app - an app RCE would get a
@@ -93,9 +98,11 @@ only; plain HTTP 404s (fails closed) rather than serving the app.
 
 ## First-run notes
 
-- On the fresh database the app seeds `admin@teamplanner.local` with an empty
-  password; the first login forces setting a real one (F22). Do this right after
-  deploy.
+- On a fresh database the app seeds `admin@teamplanner.local` with a **null**
+  password (unusable for sign-in). Complete first-run per `deploy/README.md`:
+  set `BOOTSTRAP_TOKEN`, open `/setup-admin?token=<value>`, set the password
+  (1Password first), then remove the token from `.env` and recreate the app
+  container (F22 + F31). This host already completed first-run on 2026-08-03.
 - Backup surface: the `tp-pgdata` volume only. `docker exec tp-db pg_dump -U
   teamplanner -d teamplanner > backup.sql`.
 
