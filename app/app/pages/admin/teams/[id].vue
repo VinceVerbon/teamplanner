@@ -124,6 +124,13 @@ const { data: slots, refresh: refreshSlots } = await useFetch(`/api/teams/${team
 const { data: sessions, refresh: refreshSessions } = await useFetch(`/api/teams/${teamId}/sessions`)
 const { data: seasons } = await useFetch('/api/seasons')
 const { data: locations } = await useFetch('/api/locations')
+const { data: clubData } = await useFetch('/api/clubs/current')
+
+// Prefill what is 90% certain (walkthrough feedback): the club hoofdlocatie is
+// the default for every location choice; people only change the exception.
+const mainLocationId = computed(() => clubData.value?.club?.mainLocationId || '')
+const mainLocationName = computed(() =>
+  (locations.value || []).find(l => l.id === mainLocationId.value)?.name || '')
 const { data: periods, refresh: refreshPeriods } = await useFetch('/api/no-training-periods', { query: { teamId } })
 
 const WEEKDAYS = ['maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag', 'zondag']
@@ -136,6 +143,9 @@ const trainerItems = computed(() => [
 ])
 
 const newSlot = reactive({ seasonId: '', weekday: 1, startTime: '', endTime: '', locationId: '', trainerUserId: '' })
+watchEffect(() => {
+  if (!newSlot.locationId && mainLocationId.value) newSlot.locationId = mainLocationId.value
+})
 const addSlot = () => run(async () => {
   await $fetch(`/api/teams/${teamId}/slots`, {
     method: 'POST',
@@ -150,6 +160,9 @@ const removeSlot = (id: string) => run(async () => {
 }, 'Reeks verwijderd (toekomstige sessies ook)')
 
 const newOneOff = reactive({ date: '', startTime: '', endTime: '', locationId: '', trainerUserId: '' })
+watchEffect(() => {
+  if (!newOneOff.locationId && mainLocationId.value) newOneOff.locationId = mainLocationId.value
+})
 const addOneOff = () => run(async () => {
   await $fetch(`/api/teams/${teamId}/sessions`, {
     method: 'POST',
@@ -175,18 +188,41 @@ const reinstateSession = (id: string) => run(async () => {
   await refreshSessions()
 }, 'Training hersteld')
 
-// F12/F21 matches
-const newMatch = reactive({ date: '', startTime: '', endTime: '', opponent: '', homeAway: 'home' as 'home' | 'away', locationText: '' })
+// F12/F21 matches. Manual entry is for oefenwedstrijden; on a thuiswedstrijd the
+// location plus veld and kleedkamers tell both teams where to go (composed into
+// locationText - free text by design, F12). Away: the home team routes, we ask nothing.
+const newMatch = reactive({ date: '', startTime: '', endTime: '', opponent: '', homeAway: 'home' as 'home' | 'away', locationText: '', veld: '', kleedkamerThuis: '', kleedkamerUit: '' })
+watchEffect(() => {
+  if (newMatch.homeAway === 'home' && !newMatch.locationText && mainLocationName.value) {
+    newMatch.locationText = mainLocationName.value
+  }
+})
 const homeAwayItems = [
   { label: 'Thuis', value: 'home' },
   { label: 'Uit', value: 'away' }
 ]
 const addMatch = () => run(async () => {
+  const home = newMatch.homeAway === 'home'
+  const locationText = home
+    ? [
+        newMatch.locationText.trim(),
+        newMatch.veld.trim() && `veld ${newMatch.veld.trim()}`,
+        newMatch.kleedkamerThuis.trim() && `kleedkamer thuis ${newMatch.kleedkamerThuis.trim()}`,
+        newMatch.kleedkamerUit.trim() && `kleedkamer uit ${newMatch.kleedkamerUit.trim()}`
+      ].filter(Boolean).join(', ') || null
+    : null
   await $fetch(`/api/teams/${teamId}/matches`, {
     method: 'POST',
-    body: { ...newMatch, endTime: newMatch.endTime || undefined, locationText: newMatch.locationText || null }
+    body: {
+      date: newMatch.date,
+      startTime: newMatch.startTime,
+      endTime: newMatch.endTime || undefined,
+      opponent: newMatch.opponent,
+      homeAway: newMatch.homeAway,
+      locationText
+    }
   })
-  Object.assign(newMatch, { date: '', startTime: '', endTime: '', opponent: '', homeAway: 'home', locationText: '' })
+  Object.assign(newMatch, { date: '', startTime: '', endTime: '', opponent: '', homeAway: 'home', locationText: '', veld: '', kleedkamerThuis: '', kleedkamerUit: '' })
   await refreshSessions()
 }, 'Wedstrijd toegevoegd')
 
@@ -209,10 +245,14 @@ function rowKey(r: PreviewRow): string {
   return r.externalUid ?? `${r.date}|${r.startTime}|${r.opponent}`
 }
 
+const icalFileInput = ref<HTMLInputElement | null>(null)
 async function onIcalFile(e: Event) {
-  const file = (e.target as HTMLInputElement).files?.[0]
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
   if (!file) return
   const ical = await file.text()
+  input.value = '' // same file can be chosen again after a correction
+
   await run(async () => {
     preview.value = await $fetch(`/api/teams/${teamId}/matches/import-preview`, {
       method: 'POST',
@@ -681,11 +721,20 @@ const removeAbsence = (absenceId: string) => run(async () => {
           >
             <UFormField label="Sportlink-import (.ics): kies het bestand, controleer het voorbeeld, en importeer">
               <input
+                ref="icalFileInput"
                 type="file"
                 accept=".ics,text/calendar"
-                class="text-sm"
+                class="hidden"
                 @change="onIcalFile"
               >
+              <UButton
+                label="Kies .ics-bestand"
+                icon="i-lucide-upload"
+                color="neutral"
+                variant="outline"
+                :loading="busy"
+                @click="icalFileInput?.click()"
+              />
             </UFormField>
             <div
               v-if="preview"
@@ -796,7 +845,7 @@ const removeAbsence = (absenceId: string) => run(async () => {
                 </div>
               </div>
             </template>
-            <USeparator label="of handmatig" />
+            <USeparator label="of handmatig (oefenwedstrijden)" />
             <div class="grid grid-cols-2 md:grid-cols-6 gap-2 items-end">
               <UFormField label="Datum">
                 <UInput
@@ -826,13 +875,36 @@ const removeAbsence = (absenceId: string) => run(async () => {
                   class="w-full"
                 />
               </UFormField>
-              <UFormField label="Locatie">
-                <UInput
-                  v-model="newMatch.locationText"
-                  class="w-full"
-                  placeholder="Sportpark ..."
-                />
-              </UFormField>
+              <template v-if="newMatch.homeAway === 'home'">
+                <UFormField label="Locatie">
+                  <UInput
+                    v-model="newMatch.locationText"
+                    class="w-full"
+                    placeholder="Sportpark ..."
+                  />
+                </UFormField>
+                <UFormField label="Veld">
+                  <UInput
+                    v-model="newMatch.veld"
+                    class="w-full"
+                    placeholder="2"
+                  />
+                </UFormField>
+                <UFormField label="Kleedkamer thuis">
+                  <UInput
+                    v-model="newMatch.kleedkamerThuis"
+                    class="w-full"
+                    placeholder="3"
+                  />
+                </UFormField>
+                <UFormField label="Kleedkamer uit">
+                  <UInput
+                    v-model="newMatch.kleedkamerUit"
+                    class="w-full"
+                    placeholder="5"
+                  />
+                </UFormField>
+              </template>
               <UButton
                 label="Toevoegen"
                 :loading="busy"
