@@ -37,8 +37,11 @@ docker exec tp-app wget -qO- http://127.0.0.1:3000/api/healthz
   1Password item **`Gmail Teamplanner`** (Kim en Vince, id
   `mwd226o54rfmbq67r5so2nrytu`): `username`, `password` (account password),
   `app password smtp` (the SMTP credential -> `SMTP_PASS`), `totp secret` (the
-  account's 2FA second factor - no phone number is registered, so this field is
-  the only way back in).
+  2FA authenticator seed) and `backup codes` (10 single-use Google recovery
+  codes, space-separated, generated 2026-08-06). No phone number and no recovery
+  email are registered, so those last two fields are the only ways back into the
+  account - each backup code works once, and regenerating them in Google
+  invalidates all ten.
 - To rotate or re-apply: set `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=587`,
   `SMTP_SECURE=false`, `SMTP_USER=<username>`, `SMTP_PASS=<app password smtp>`,
   `MAIL_FROM=teamplanner <username>` in `deploy/.env`, then
